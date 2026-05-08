@@ -864,6 +864,7 @@ name = "codewhale-config"
 version = "0.8.45"
 dependencies = [
  "anyhow",
+ "codewhale-execpolicy",
  "codewhale-secrets",
  "dirs",
  "serde",
@@ -1395,7 +1396,6 @@ dependencies = [
  "serde_json",
 ]
 
-[[package]]
 name = "deltae"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
