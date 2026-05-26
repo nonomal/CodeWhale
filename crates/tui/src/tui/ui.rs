@@ -38,7 +38,10 @@ use crate::automation_manager::{AutomationManager, AutomationSchedulerConfig, sp
 use crate::client::{DeepSeekClient, build_cache_warmup_request};
 use crate::commands;
 use crate::compaction::estimate_input_tokens_conservative;
-use crate::config::{ApiProvider, Config, DEFAULT_NVIDIA_NIM_BASE_URL};
+use crate::config::{
+    ApiProvider, Config, DEFAULT_NVIDIA_NIM_BASE_URL, ProviderConfig, ProvidersConfig,
+    save_provider_auth_mode_for,
+};
 use crate::config_ui::{self, ConfigUiMode, WebConfigSession, WebConfigSessionEvent};
 use crate::core::engine::{EngineConfig, EngineHandle, spawn_engine};
 use crate::core::events::Event as EngineEvent;
@@ -105,7 +108,7 @@ use crate::tui::workspace_context;
 
 use super::app::{
     App, AppAction, AppMode, OnboardingState, QueuedMessage, ReasoningEffort, SidebarFocus,
-    StatusToastLevel, SubmitDisposition, TaskPanelEntry, TuiOptions, VoiceInputState,
+    StatusToastLevel, SubmitDisposition, TaskPanelEntry, TuiOptions,
     looks_like_slash_command_input,
 };
 use super::approval::{
@@ -192,10 +195,6 @@ enum TranslationEvent {
     },
 }
 
-#[derive(Debug)]
-enum VoiceInputEvent {
-    Finished { result: Result<String> },
-}
 // Reset scroll region (`\x1b[r`), origin mode (`\x1b[?6l`), and home the cursor
 // (`\x1b[H`) before letting ratatui's diff renderer repaint. The destructive
 // `\x1b[2J\x1b[3J` pair was previously appended here to also wipe the visible
@@ -715,6 +714,7 @@ fn build_engine_config(app: &App, config: &Config) -> EngineConfig {
         runtime_services: app.runtime_services.clone(),
         subagent_model_overrides: config.subagent_model_overrides(),
         subagent_api_timeout: Duration::from_secs(config.subagent_api_timeout_secs()),
+        prefer_bwrap: config.prefer_bwrap.unwrap_or(false),
         memory_enabled: config.memory_enabled(),
         memory_path: config.memory_path(),
         vision_config: config.vision_model_config(),
@@ -868,8 +868,6 @@ async fn run_event_loop(
     let mut current_streaming_text = String::new();
     let (translation_tx, mut translation_rx) =
         tokio::sync::mpsc::unbounded_channel::<TranslationEvent>();
-    let (voice_input_tx, mut voice_input_rx) =
-        tokio::sync::mpsc::unbounded_channel::<VoiceInputEvent>();
     let mut pending_translations = 0usize;
     let mut pending_thinking_translations = 0usize;
     let mut last_queue_state = (app.queued_messages.clone(), app.queued_draft.clone());
@@ -897,7 +895,59 @@ async fn run_event_loop(
         .checked_sub(Duration::from_secs(60))
         .unwrap_or_else(Instant::now);
 
+    // Fire-and-forget version check — runs once per session in the
+    // background. On success, `app.version_hint` is set and the footer
+    // renders the update recommendation on the next frame.
+    let mut version_check: Option<tokio::task::JoinHandle<Option<String>>> = Some({
+        let current = env!("CARGO_PKG_VERSION").to_string();
+        tokio::spawn(async move {
+            let client = match reqwest::Client::builder()
+                .user_agent("codewhale-version-check")
+                .timeout(std::time::Duration::from_secs(5))
+                .build()
+            {
+                Ok(c) => c,
+                Err(_) => return None,
+            };
+            let resp = client
+                .get("https://api.github.com/repos/Hmbown/CodeWhale/releases/latest")
+                .header("Accept", "application/vnd.github+json")
+                .send()
+                .await
+                .ok()?;
+            let json: serde_json::Value = resp.json().await.ok()?;
+            let tag = json["tag_name"].as_str()?;
+            let latest = tag.trim_start_matches('v');
+            // Compare semver so dev builds (e.g. "0.8.46-pre") don't
+            // trigger false hints. Falls back to string compare on
+            // unparseable versions.
+            let newer = match (parse_semver(latest), parse_semver(&current)) {
+                (Some(l), Some(c)) => l > c,
+                _ => latest != current,
+            };
+            if newer {
+                Some(format!(
+                    "v{latest} available — run `codewhale update` and restart"
+                ))
+            } else {
+                None
+            }
+        })
+    });
+
     loop {
+        // Drain the version-check handle once; re-assign None so we
+        // don't poll it again.
+        let mut done = false;
+        if let Some(ref handle) = version_check {
+            done = handle.is_finished();
+        }
+        if done
+            && let Ok(Some(hint)) = version_check.take().unwrap().await
+        {
+            app.version_hint = Some(hint);
+        }
+
         if !drain_web_config_events(&mut web_config_session, app, config, &engine_handle).await {
             web_config_session = None;
         }
@@ -988,8 +1038,6 @@ async fn run_event_loop(
                 }
             }
         }
-
-        drain_voice_input_events(app, &mut voice_input_rx);
 
         if last_task_refresh.elapsed() >= Duration::from_millis(2500) {
             refresh_active_task_panel(app, &task_manager).await;
@@ -2005,7 +2053,6 @@ async fn run_event_loop(
                 &task_manager,
                 &mut engine_handle,
                 &mut web_config_session,
-                voice_input_tx.clone(),
                 events,
             )
             .await?
@@ -2018,10 +2065,7 @@ async fn run_event_loop(
         if reconcile_turn_liveness(app, Instant::now(), has_running_agents) {
             app.needs_redraw = true;
         }
-        if (app.is_loading
-            || has_running_agents
-            || app.is_compacting
-            || app.voice_input_state.is_some())
+        if (app.is_loading || has_running_agents || app.is_compacting)
             && last_status_frame.elapsed()
                 >= Duration::from_millis(status_animation_interval_ms(app))
         {
@@ -2115,11 +2159,7 @@ async fn run_event_loop(
             app.needs_redraw = false;
         }
 
-        let mut poll_timeout = if app.is_loading
-            || has_running_agents
-            || app.is_compacting
-            || app.voice_input_state.is_some()
-        {
+        let mut poll_timeout = if app.is_loading || has_running_agents || app.is_compacting {
             Duration::from_millis(active_poll_ms(app))
         } else {
             Duration::from_millis(idle_poll_ms(app))
@@ -2304,7 +2344,6 @@ async fn run_event_loop(
                     &task_manager,
                     &mut engine_handle,
                     &mut web_config_session,
-                    voice_input_tx.clone(),
                     events,
                 )
                 .await?
@@ -2686,7 +2725,6 @@ async fn run_event_loop(
                     &task_manager,
                     &mut engine_handle,
                     &mut web_config_session,
-                    voice_input_tx.clone(),
                     events,
                 )
                 .await?
@@ -5289,82 +5327,6 @@ async fn execute_command_input(
     .await
 }
 
-fn start_voice_input(
-    app: &mut App,
-    voice_input_tx: tokio::sync::mpsc::UnboundedSender<VoiceInputEvent>,
-) {
-    if app.voice_input_state.is_some() {
-        app.status_message = Some("Voice input is already listening".to_string());
-        app.needs_redraw = true;
-        return;
-    }
-
-    let settings = match crate::settings::Settings::load() {
-        Ok(settings) => settings,
-        Err(err) => {
-            app.add_message(HistoryCell::System {
-                content: format!("Voice input unavailable: failed to load settings: {err}"),
-            });
-            app.status_message = Some("Voice input unavailable".to_string());
-            return;
-        }
-    };
-
-    let Some(command_line) = settings.voice_input_command.clone() else {
-        app.add_message(HistoryCell::System {
-            content: "Voice input is not configured. Set `voice_input_command` in settings.toml or export `DEEPSEEK_VOICE_INPUT_COMMAND`. Open the command palette and choose Voice input after configuring it. The command must write the transcript to stdout.".to_string(),
-        });
-        app.status_message = Some("Voice input not configured".to_string());
-        return;
-    };
-
-    let timeout_secs = settings.voice_input_timeout_secs;
-    let workspace = app.workspace.clone();
-    app.voice_input_state = Some(VoiceInputState::new(Instant::now()));
-    app.status_message =
-        Some("Voice input listening - transcript will appear in the composer".to_string());
-    app.needs_redraw = true;
-
-    tokio::spawn(async move {
-        let result = crate::tui::voice_input::run_configured_voice_command(
-            &command_line,
-            timeout_secs,
-            &workspace,
-        )
-        .await;
-        let _ = voice_input_tx.send(VoiceInputEvent::Finished { result });
-    });
-}
-
-fn drain_voice_input_events(
-    app: &mut App,
-    voice_input_rx: &mut tokio::sync::mpsc::UnboundedReceiver<VoiceInputEvent>,
-) {
-    while let Ok(event) = voice_input_rx.try_recv() {
-        match event {
-            VoiceInputEvent::Finished { result } => {
-                app.voice_input_state = None;
-                match result {
-                    Ok(transcript) => {
-                        let char_count = transcript.chars().count();
-                        app.insert_str(&transcript);
-                        app.status_message = Some(format!(
-                            "Voice transcript inserted ({char_count} chars) - edit, then Enter to send"
-                        ));
-                    }
-                    Err(err) => {
-                        app.add_message(HistoryCell::System {
-                            content: format!("Voice input failed: {err}"),
-                        });
-                        app.status_message = Some("Voice input failed".to_string());
-                    }
-                }
-                app.needs_redraw = true;
-            }
-        }
-    }
-}
-
 async fn steer_user_message(
     app: &mut App,
     engine_handle: &EngineHandle,
@@ -5731,6 +5693,7 @@ fn render(f: &mut Frame, app: &mut App) {
             crate::config::ApiProvider::Openrouter => Some("OR"),
             crate::config::ApiProvider::Novita => Some("Novita"),
             crate::config::ApiProvider::Fireworks => Some("Fireworks"),
+            crate::config::ApiProvider::Moonshot => Some("Kimi"),
             crate::config::ApiProvider::Sglang => Some("SGLang"),
             crate::config::ApiProvider::Vllm => Some("vLLM"),
             crate::config::ApiProvider::Ollama => Some("Ollama"),
@@ -5814,6 +5777,34 @@ fn render(f: &mut Frame, app: &mut App) {
 
         if let Some(sidebar_area) = sidebar_area {
             super::sidebar::render_sidebar(f, sidebar_area, app);
+
+            // Render sidebar hover tooltip if active.
+            if let Some(ref tooltip_text) = app.sidebar_hover_tooltip
+                && let Some((mouse_col, mouse_row)) = app.last_mouse_pos
+            {
+                let text_width = (tooltip_text.len() as u16).clamp(10, 60);
+                let tooltip_height = 1u16;
+                let x = mouse_col
+                    .saturating_add(2)
+                    .min(size.width.saturating_sub(text_width));
+                let y = mouse_row
+                    .saturating_sub(1)
+                    .min(size.height.saturating_sub(tooltip_height));
+                if text_width > 0 && tooltip_height > 0 {
+                    let tooltip_area = Rect {
+                        x,
+                        y,
+                        width: text_width,
+                        height: tooltip_height,
+                    };
+                    let tooltip = ratatui::widgets::Paragraph::new(tooltip_text.as_str()).style(
+                        Style::default()
+                            .bg(palette::STATUS_WARNING)
+                            .fg(palette::TEXT_MUTED),
+                    );
+                    f.render_widget(tooltip, tooltip_area);
+                }
+            }
         }
     }
 
@@ -5978,7 +5969,6 @@ async fn handle_view_events(
     task_manager: &SharedTaskManager,
     engine_handle: &mut EngineHandle,
     web_config_session: &mut Option<WebConfigSession>,
-    voice_input_tx: tokio::sync::mpsc::UnboundedSender<VoiceInputEvent>,
     events: Vec<ViewEvent>,
 ) -> Result<bool> {
     for event in events {
@@ -6009,9 +5999,6 @@ async fn handle_view_events(
                 crate::tui::views::CommandPaletteAction::OpenTextPager { title, content } => {
                     open_text_pager(app, title, content);
                 }
-                crate::tui::views::CommandPaletteAction::VoiceInput => {
-                    start_voice_input(app, voice_input_tx.clone());
-                }
             },
             ViewEvent::OpenTextPager { title, content } => {
                 open_text_pager(app, title, content);
@@ -6033,31 +6020,19 @@ async fn handle_view_events(
                 approval_key,
                 approval_grouping_key,
             } => {
-                if decision == ReviewDecision::ApprovedForSession {
-                    // Store the tool name (backward compat) and the lossy
-                    // grouping key so later flag variants of the same
-                    // command family are also auto-approved (v0.8.37).
-                    app.approval_session_approved.insert(tool_name.clone());
-                    app.approval_session_approved
-                        .insert(approval_grouping_key.clone());
-                }
-
-                match decision {
-                    ReviewDecision::Approved | ReviewDecision::ApprovedForSession => {
-                        let _ = engine_handle.approve_tool_call(tool_id).await;
-                    }
-                    ReviewDecision::Denied | ReviewDecision::Abort => {
-                        // Cache the denial so the model retry-loop doesn't
-                        // re-prompt for the exact same approval_key (#360).
-                        // Only the key (per-call unique) is stored — NOT
-                        // the tool_name, which would block all future
-                        // invocations of the same tool type (#1377).
-                        if !timed_out {
-                            app.approval_session_denied.insert(approval_key);
-                        }
-                        let _ = engine_handle.deny_tool_call(tool_id).await;
-                    }
-                }
+                apply_approval_decision(
+                    app,
+                    engine_handle,
+                    ApprovalDecisionEvent {
+                        tool_id,
+                        tool_name,
+                        decision,
+                        timed_out,
+                        approval_key,
+                        approval_grouping_key,
+                    },
+                )
+                .await;
 
                 if timed_out {
                     app.add_message(HistoryCell::System {
@@ -6271,6 +6246,17 @@ async fn handle_view_events(
             ViewEvent::ProviderPickerApiKeySubmitted { provider, api_key } => {
                 apply_provider_picker_api_key(app, engine_handle, config, provider, api_key).await;
             }
+            ViewEvent::ProviderPickerKimiOAuthEnabled { provider } => {
+                apply_provider_picker_auth_mode(
+                    app,
+                    engine_handle,
+                    config,
+                    provider,
+                    "kimi_oauth",
+                    "Linked Kimi CLI OAuth",
+                )
+                .await;
+            }
             ViewEvent::ModeSelected { mode } => {
                 let msg = commands::switch_mode(app, mode);
                 app.add_message(HistoryCell::System { content: msg });
@@ -6317,6 +6303,52 @@ async fn handle_view_events(
     }
 
     Ok(false)
+}
+
+struct ApprovalDecisionEvent {
+    tool_id: String,
+    tool_name: String,
+    decision: ReviewDecision,
+    timed_out: bool,
+    approval_key: String,
+    approval_grouping_key: String,
+}
+
+async fn apply_approval_decision(
+    app: &mut App,
+    engine_handle: &mut EngineHandle,
+    event: ApprovalDecisionEvent,
+) {
+    if event.decision == ReviewDecision::ApprovedForSession {
+        // Store the tool name (backward compat) and the lossy grouping key so
+        // later flag variants of the same command family are also auto-approved
+        // (v0.8.37).
+        app.approval_session_approved
+            .insert(event.tool_name.clone());
+        app.approval_session_approved
+            .insert(event.approval_grouping_key.clone());
+    }
+
+    match event.decision {
+        ReviewDecision::Approved | ReviewDecision::ApprovedForSession => {
+            let _ = engine_handle.approve_tool_call(event.tool_id).await;
+        }
+        ReviewDecision::Denied => {
+            // Cache the denial so the model retry-loop doesn't re-prompt for
+            // the exact same approval_key (#360). Only the key (per-call
+            // unique) is stored — NOT the tool_name, which would block all
+            // future invocations of the same tool type (#1377).
+            if !event.timed_out {
+                app.approval_session_denied.insert(event.approval_key);
+            }
+            let _ = engine_handle.deny_tool_call(event.tool_id).await;
+        }
+        ReviewDecision::Abort => {
+            engine_handle.cancel();
+            mark_active_turn_cancelled_locally(app);
+            app.status_message = Some("Request cancelled".to_string());
+        }
+    }
 }
 
 fn mark_active_turn_cancelled_locally(app: &mut App) {
@@ -6478,7 +6510,7 @@ async fn apply_provider_picker_api_key(
     provider: ApiProvider,
     api_key: String,
 ) {
-    use crate::config::{ProviderConfig, ProvidersConfig, save_api_key_for};
+    use crate::config::save_api_key_for;
 
     match save_api_key_for(provider, &api_key) {
         Ok(path) => {
@@ -6520,6 +6552,7 @@ async fn apply_provider_picker_api_key(
             ApiProvider::Openrouter => &mut providers.openrouter,
             ApiProvider::Novita => &mut providers.novita,
             ApiProvider::Fireworks => &mut providers.fireworks,
+            ApiProvider::Moonshot => &mut providers.moonshot,
             ApiProvider::Sglang => &mut providers.sglang,
             ApiProvider::Vllm => &mut providers.vllm,
             ApiProvider::Ollama => &mut providers.ollama,
@@ -6528,6 +6561,55 @@ async fn apply_provider_picker_api_key(
     }
 
     switch_provider(app, engine_handle, config, provider, None).await;
+}
+
+async fn apply_provider_picker_auth_mode(
+    app: &mut App,
+    engine_handle: &mut EngineHandle,
+    config: &mut Config,
+    provider: ApiProvider,
+    auth_mode: &str,
+    status_prefix: &str,
+) {
+    match save_provider_auth_mode_for(provider, auth_mode) {
+        Ok(path) => {
+            set_provider_auth_mode_in_memory(config, provider, auth_mode.to_string());
+            app.status_message = Some(format!("{status_prefix}; saved to {}", path.display()));
+            app.api_key_env_only = false;
+        }
+        Err(err) => {
+            app.add_message(HistoryCell::System {
+                content: format!(
+                    "Failed to save {} auth mode: {err}\nProvider unchanged.",
+                    provider.as_str()
+                ),
+            });
+            return;
+        }
+    }
+
+    switch_provider(app, engine_handle, config, provider, None).await;
+}
+
+fn set_provider_auth_mode_in_memory(config: &mut Config, provider: ApiProvider, auth_mode: String) {
+    let providers = config
+        .providers
+        .get_or_insert_with(ProvidersConfig::default);
+    let entry: &mut ProviderConfig = match provider {
+        ApiProvider::Deepseek | ApiProvider::DeepseekCN => return,
+        ApiProvider::NvidiaNim => &mut providers.nvidia_nim,
+        ApiProvider::Openai => &mut providers.openai,
+        ApiProvider::Atlascloud => &mut providers.atlascloud,
+        ApiProvider::WanjieArk => &mut providers.wanjie_ark,
+        ApiProvider::Openrouter => &mut providers.openrouter,
+        ApiProvider::Novita => &mut providers.novita,
+        ApiProvider::Fireworks => &mut providers.fireworks,
+        ApiProvider::Moonshot => &mut providers.moonshot,
+        ApiProvider::Sglang => &mut providers.sglang,
+        ApiProvider::Vllm => &mut providers.vllm,
+        ApiProvider::Ollama => &mut providers.ollama,
+    };
+    entry.auth_mode = Some(auth_mode);
 }
 
 fn apply_loaded_session(app: &mut App, config: &Config, session: &SavedSession) -> bool {
@@ -6608,6 +6690,10 @@ fn apply_loaded_session(app: &mut App, config: &Config, session: &SavedSession) 
     app.session.last_prompt_cache_miss_tokens = None;
     app.session.last_reasoning_replay_tokens = None;
     app.session.turn_cache_history.clear();
+    // Restore cumulative turn duration so the footer "worked" chip
+    // persists across session restarts (#2038).
+    app.cumulative_turn_duration =
+        std::time::Duration::from_secs(session.metadata.cumulative_turn_secs);
     app.current_session_id = Some(session.metadata.id.clone());
     app.session_artifacts = session.artifacts.clone();
     app.session_title = Some(session.metadata.title.clone());
@@ -7905,6 +7991,16 @@ fn extract_reasoning_header(text: &str) -> Option<String> {
     } else {
         Some(header.to_string())
     }
+}
+
+/// Parse a `major.minor.patch` version string into a comparable tuple.
+/// Returns `None` on any parse failure (non-semver, dev suffixes, etc.).
+fn parse_semver(v: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = v.splitn(3, '.');
+    let major = parts.next()?.parse::<u32>().ok()?;
+    let minor = parts.next()?.parse::<u32>().ok()?;
+    let patch = parts.next().unwrap_or("0").parse::<u32>().ok()?;
+    Some((major, minor, patch))
 }
 
 #[cfg(test)]

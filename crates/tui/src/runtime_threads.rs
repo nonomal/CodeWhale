@@ -868,10 +868,10 @@ impl RuntimeThreadManager {
 
         {
             let mut active = self.active.lock().await;
-            if let Some(state) = active.engines.get_mut(thread_id) {
-                if let Some(turn) = state.active_turn.as_mut() {
-                    turn.auto_approve = true;
-                }
+            if let Some(state) = active.engines.get_mut(thread_id)
+                && let Some(turn) = state.active_turn.as_mut()
+            {
+                turn.auto_approve = true;
             }
         }
     }
@@ -1976,6 +1976,7 @@ impl RuntimeThreadManager {
             subagent_api_timeout: std::time::Duration::from_secs(
                 self.config.subagent_api_timeout_secs(),
             ),
+            prefer_bwrap: self.config.prefer_bwrap.unwrap_or(false),
             memory_enabled: self.config.memory_enabled(),
             memory_path: self.config.memory_path(),
             vision_config: self.config.vision_model_config(),

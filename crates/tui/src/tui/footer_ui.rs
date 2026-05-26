@@ -44,6 +44,13 @@ pub(crate) fn render_footer(f: &mut Frame, area: Rect, app: &mut App) {
         None
     };
     let toast = quit_prompt.or_else(|| {
+        // Version-update hint takes precedence over ephemeral status toasts
+        // so the user sees it even when status traffic would hide it.
+        app.version_hint.as_ref().map(|hint| FooterToast {
+            text: hint.clone(),
+            color: palette::STATUS_INFO,
+        })
+    }).or_else(|| {
         app.active_status_toast().map(|toast| FooterToast {
             text: toast.text,
             color: status_color(toast.level),
@@ -72,8 +79,7 @@ pub(crate) fn render_footer(f: &mut Frame, area: Rect, app: &mut App) {
         // Surface one compact live status row in the footer whenever a turn
         // is live. Tool turns get the current action plus active/done counts;
         // non-tool work falls back to the existing dot-pulse label.
-        let mut label = active_voice_input_status_label(app, now_ms)
-            .or_else(|| active_subagent_status_label(app))
+        let mut label = active_subagent_status_label(app)
             .or_else(|| active_tool_status_label(app))
             .unwrap_or_else(|| crate::tui::widgets::footer_working_label(dot_frame, app.ui_locale));
         // Append stall reason when the turn has been running > 30 s.
@@ -156,47 +162,16 @@ pub(crate) fn stall_reason(app: &App) -> Option<&'static str> {
 /// though the agent is still working.
 pub(crate) fn footer_working_strip_active(app: &App) -> bool {
     let turn_in_progress = app.runtime_turn_status.as_deref() == Some("in_progress");
-    app.is_loading
-        || app.is_compacting
-        || running_agent_count(app) > 0
-        || turn_in_progress
-        || app.voice_input_state.is_some()
+    app.is_loading || app.is_compacting || running_agent_count(app) > 0 || turn_in_progress
 }
 
 pub(crate) fn footer_working_label_frame(now_ms: u64, fancy_animations: bool) -> u64 {
     if fancy_animations { now_ms / 400 } else { 0 }
 }
 
-pub(crate) fn active_voice_input_status_label(app: &App, now_ms: u64) -> Option<String> {
-    let state = app.voice_input_state.as_ref()?;
-    let elapsed = state.started_at.elapsed().as_secs();
-    Some(voice_input_status_text(
-        app.fancy_animations,
-        elapsed,
-        now_ms,
-    ))
-}
-
-pub(crate) fn voice_input_status_text(
-    fancy_animations: bool,
-    elapsed_secs: u64,
-    now_ms: u64,
-) -> String {
-    if !fancy_animations {
-        return format!("listening/transcribing {elapsed_secs}s");
-    }
-    let dots = match (now_ms / 300) % 4 {
-        0 => "",
-        1 => ".",
-        2 => "..",
-        _ => "...",
-    };
-    format!("listening/transcribing{dots} {elapsed_secs}s")
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{footer_working_label_frame, voice_input_status_text};
+    use super::footer_working_label_frame;
 
     #[test]
     fn footer_working_label_frame_is_static_without_fancy_animations() {
@@ -204,15 +179,6 @@ mod tests {
         assert_eq!(footer_working_label_frame(399, false), 0);
         assert_eq!(footer_working_label_frame(1_600, false), 0);
         assert_eq!(footer_working_label_frame(1_600, true), 4);
-    }
-
-    #[test]
-    fn voice_input_status_label_animates_when_enabled() {
-        let first = voice_input_status_text(true, 2, 0);
-        let second = voice_input_status_text(true, 2, 300);
-
-        assert_ne!(first, second);
-        assert!(first.contains("listening/transcribing"));
     }
 }
 
@@ -508,9 +474,16 @@ pub(crate) fn render_footer_from(
         props.model.clear();
     }
 
+    // Shell-running chip: visible whenever a foreground shell command is
+    // active, regardless of user-configured status items.
+    let shell_chip = crate::tui::widgets::footer_shell_chip(active_foreground_shell_running(app));
+
     // Right-cluster extension chips: append in `items` order so user
     // ordering is preserved across the new variants.
     let mut extra: Vec<Span<'static>> = Vec::new();
+    if !shell_chip.is_empty() {
+        extra.extend(shell_chip);
+    }
     for item in items {
         let chip = match *item {
             S::PrefixStability => prefix_stability.clone(),
@@ -583,10 +556,21 @@ pub(crate) fn footer_cost_spans(app: &App) -> Vec<Span<'static>> {
     if !should_show_footer_cost(displayed_cost) {
         return Vec::new();
     }
-    vec![Span::styled(
+    let mut spans = vec![Span::styled(
         app.format_cost_amount(displayed_cost),
         Style::default().fg(palette::TEXT_MUTED),
-    )]
+    )];
+    // Append cache-savings hint when the last turn had cache hits that
+    // saved money (#2038).
+    if let Some(saved) = app.last_turn_cache_savings()
+        && saved > 0.0
+    {
+        spans.push(Span::styled(
+            format!(" · saved {}", app.format_cost_amount(saved)),
+            Style::default().fg(palette::STATUS_SUCCESS),
+        ));
+    }
+    spans
 }
 
 pub(crate) fn should_show_footer_cost(displayed_cost: f64) -> bool {
@@ -620,6 +604,9 @@ pub(crate) fn footer_auxiliary_spans(app: &App, max_width: usize) -> Vec<Span<'s
         })
         .unwrap_or_default();
 
+    let shell_spans =
+        crate::tui::widgets::footer_shell_chip(active_foreground_shell_running(app));
+
     let parts: Vec<&Vec<Span<'static>>> = [
         &coherence_spans,
         &agents_spans,
@@ -627,6 +614,7 @@ pub(crate) fn footer_auxiliary_spans(app: &App, max_width: usize) -> Vec<Span<'s
         &prefix_spans,
         &cache_spans,
         &cost_spans,
+        &shell_spans,
     ]
     .iter()
     .filter(|spans| !spans.is_empty())
