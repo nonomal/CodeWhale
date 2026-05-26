@@ -10,9 +10,10 @@
 //!
 //! - **macOS**: Uses Seatbelt (sandbox-exec) for mandatory access control
 //! - **Linux**: Uses Landlock (kernel 5.13+) for filesystem access control
-//! - **Windows**: No OS sandbox is advertised yet. The planned first helper
-//!   contract is process-tree containment only via a Windows Job Object; it
-//!   must not claim filesystem, network, registry, or AppContainer isolation.
+//! - **Windows**: Process containment via Job Object with
+//!   `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and a restricted token that drops
+//!   admin SIDs. Filesystem, network, registry, and AppContainer isolation are
+//!   not yet implemented (v2).
 //!
 //! # Usage
 //!
@@ -469,12 +470,13 @@ impl SandboxManager {
         }
     }
 
-    /// Prepare a Windows helper execution environment.
+    /// Prepare a Windows-sandboxed execution environment.
     ///
-    /// Windows support is currently not advertised by `get_platform_sandbox`.
-    /// This branch only exists for forced tests and future helper wiring.
-    /// The first supported helper contract is process-tree containment only;
-    /// it must not be presented as filesystem or network isolation.
+    /// v1 provides process-tree containment via a Job Object with
+    /// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and a restricted token that drops
+    /// admin SIDs. Filesystem ACL deny, network isolation (WFP), and AppContainer
+    /// are deferred to v2. The sandbox handles are applied at process-spawn time
+    /// in `tools/shell.rs` via `PROC_THREAD_ATTRIBUTE_JOB_LIST`.
     #[cfg(target_os = "windows")]
     fn prepare_windows(spec: &CommandSpec) -> ExecEnv {
         let mut command = vec![spec.program.clone()];
