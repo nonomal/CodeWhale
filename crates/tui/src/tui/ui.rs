@@ -4525,6 +4525,10 @@ async fn switch_provider(
     }
     if let Some(ref model) = model_override {
         config.default_text_model = Some(model.clone());
+    } else if target != previous_provider {
+        // Switching to a different provider without an explicit model choice:
+        // clear the old model so the new provider's default is used.
+        config.default_text_model = None;
     }
 
     if let Err(err) = DeepSeekClient::new(config) {

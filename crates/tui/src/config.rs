@@ -3128,7 +3128,6 @@ pub(crate) fn provider_passes_model_through(provider: ApiProvider) -> bool {
             | ApiProvider::WanjieArk
             | ApiProvider::Moonshot
             | ApiProvider::Ollama
-            | ApiProvider::Xiaomi
     )
 }
 
