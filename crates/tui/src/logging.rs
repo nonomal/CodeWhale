@@ -149,10 +149,12 @@ mod tests {
         reset_logging_state();
         IN_ALT_SCREEN.store(true, Ordering::SeqCst);
         set_verbose(true);
-        assert_eq!(
-            is_verbose(),
-            alt_screen_verbose_state(true, IN_ALT_SCREEN.load(Ordering::SeqCst), cfg!(windows))
-        );
+        assert!(REQUESTED_VERBOSE.load(Ordering::SeqCst));
+        if cfg!(windows) {
+            assert!(!is_verbose());
+        } else {
+            assert!(is_verbose());
+        }
         reset_logging_state();
     }
 
