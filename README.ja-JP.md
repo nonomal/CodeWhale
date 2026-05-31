@@ -268,7 +268,8 @@ TUI 内では `/provider` でプロバイダーピッカー、`/model` でロー
 
 ```bash
 codewhale                                         # インタラクティブ TUI
-codewhale "explain this function"                 # ワンショットプロンプト
+codewhale "explain this function"                 # 最初のプロンプトを送信し、TUI を開いたままにする
+codewhale exec "explain this function"            # ワンショットプロンプト
 codewhale exec --auto --output-format stream-json "fix this bug"  # NDJSON バックエンドストリーム
 codewhale exec --resume <SESSION_ID> "follow up"  # 非対話セッションを継続
 codewhale --model deepseek-v4-flash "summarize"   # モデルの上書き
@@ -470,9 +471,9 @@ v0.8.48 の安定化ハーベストでは、特に **[reidliu41](https://github.
 - **[donglovejava](https://github.com/donglovejava)** — コンパクション状態のアニメーションと CJK/IME composer 入力修正 (#2302, #2330)
 - **[zlh124](https://github.com/zlh124)** — Windows batch ランチャーのパッケージングと WSL/headless 起動対応 (#1772, #1773, #1861)
 - **[cy2311](https://github.com/cy2311)** — v0.8.48 安定化のための再起動後 holding-turn 検証 (#2325)
-- **[nightt5879](https://github.com/nightt5879)** — deferred tool-search の結果数上限修正 (#2344)
+- **[nightt5879](https://github.com/nightt5879)** — インタラクティブな起動プロンプト挙動と deferred tool-search の結果数上限修正 (#2373, #2344)
 - **[yyyCode](https://github.com/yyyCode)** — `~/.codewhale` 状態ルート移行に関するドキュメント不一致の報告 (#2322)
-- **[buko](https://github.com/buko)** — Cygwin/HOME 設定パス分断の報告とパッチメモ (#2369)
+- **[buko](https://github.com/buko)** — Cygwin/HOME 設定パス分断と @-mention メニュー上限の報告 (#2369, #2360)
 - **[T-Phuong-Nguyen](https://github.com/T-Phuong-Nguyen)** — MCP tool-search 結果数の問題報告 (#2339)
 
 ---

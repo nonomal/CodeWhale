@@ -66,8 +66,9 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol
   verification still needs a Wanjie key.
 - Website facts were regenerated for v0.8.48 and should show Xiaomi MiMo in the
   provider list.
-- Cloudflare cron config is already present in `web/wrangler.jsonc`; remaining
-  blocker is deployment/auth on the target machine.
+- US-facing web deployment should start with Railway using `web/railway.json`.
+  Keep Cloudflare as the edge/cron/KV route until the curator storage path is
+  replaced.
 - 0.9.0 whale-pods work should stay next-cycle scope, not a late v0.8.48
   release add-on.
 

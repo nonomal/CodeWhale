@@ -282,7 +282,7 @@ fn is_restricted_ip(ip: &std::net::IpAddr) -> bool {
                 || v4.is_unspecified()
                 // 100.64.0.0/10 — Carrier-grade NAT (CGNAT / shared address space)
                 || matches!(v4.octets(), [100, 64..=127, ..])
-                // 169.254.169.254 — cloud metadata (AWS/GCP/Azure)
+                // 169.254.169.254 — common cloud metadata endpoint
                 || *ip == std::net::IpAddr::V4(std::net::Ipv4Addr::new(169, 254, 169, 254))
                 // 198.18.0.0/15 — IETF benchmark testing
                 || matches!(v4.octets(), [198, 18..=19, ..])

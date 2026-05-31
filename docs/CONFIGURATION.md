@@ -392,6 +392,8 @@ Common settings keys:
   values are accepted and normalized to `work`.
 - `max_history` (number of submitted input history entries; cleared drafts are
   also kept locally for composer history search)
+- `mention_menu_limit` (default `128`): maximum number of `@`-mention file
+  candidates kept for scrolling in the composer popup
 - `default_model` (model name override)
 
 Only `agent`, `plan`, and `yolo` are visible modes in the UI. Switch between

@@ -90,7 +90,9 @@ See `MCP.md`.
 
 Run `codewhale --help` for the canonical list. Common flags:
 
-- `-p, --prompt <TEXT>`: one-shot prompt mode (prints and exits)
+- `-p, --prompt <TEXT>`: submit an initial prompt into the interactive TUI and
+  keep the session open for follow-ups
+- `codewhale exec <PROMPT>`: explicit one-shot prompt mode (prints and exits)
 - `codewhale exec --auto --output-format stream-json <PROMPT>`: run the tool-backed non-interactive agent and emit one JSON object per line for harnesses and backend wrappers
 - `codewhale exec --resume <ID|PREFIX> <PROMPT>` / `--session-id <ID|PREFIX>`: continue a saved session non-interactively
 - `codewhale exec --continue <PROMPT>`: continue the most recent saved session for this workspace non-interactively

@@ -76,7 +76,7 @@ const tracksEn = [
     color: "indigo",
     items: [
       { title: "Community model registry", note: "Discover, share, and rate community fine-tuned models with reproducible recipes" },
-      { title: "One-click deploy", note: "Deploy any model to RunPod, Replicate, or your own infra with a single command" },
+      { title: "One-click deploy", note: "Railway first for US-hosted services, then RunPod, Replicate, or your own infra" },
       { title: "Model benchmarking dashboard", note: "Transparent, reproducible benchmarks across providers, quantization levels, and hardware" },
     ],
   },
@@ -142,7 +142,7 @@ const tracksZh = [
     color: "indigo",
     items: [
       { title: "社区模型注册中心", note: "发现、分享和评价社区微调模型，附带可复现的配方" },
-      { title: "一键部署", note: "一条命令将任意模型部署到 RunPod、Replicate 或自有基础设施" },
+      { title: "一键部署", note: "美国托管优先走 Railway，然后再扩展到 RunPod、Replicate 或自有基础设施" },
       { title: "模型基准测试面板", note: "跨提供商、量化级别和硬件的透明、可复现基准测试" },
     ],
   },

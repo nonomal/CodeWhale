@@ -33,6 +33,42 @@ fn test_options(yolo: bool) -> TuiOptions {
 }
 
 #[test]
+fn initial_input_prefill_waits_for_manual_submit() {
+    let mut options = test_options(false);
+    options.initial_input = Some(InitialInput::Prefill("review this PR".to_string()));
+
+    let app = App::new(options, &Config::default());
+
+    assert_eq!(app.input, "review this PR");
+    assert_eq!(app.cursor_position, "review this PR".chars().count());
+    assert!(!app.auto_submit_initial_input);
+}
+
+#[test]
+fn initial_input_submit_marks_startup_dispatch() {
+    let mut options = test_options(false);
+    options.initial_input = Some(InitialInput::Submit(
+        "阅读项目 and wait for instructions".to_string(),
+    ));
+
+    let app = App::new(options, &Config::default());
+
+    assert_eq!(app.input, "阅读项目 and wait for instructions");
+    assert_eq!(
+        app.cursor_position,
+        "阅读项目 and wait for instructions".chars().count()
+    );
+    assert!(app.auto_submit_initial_input);
+}
+
+#[test]
+fn mention_menu_limit_defaults_to_scrollable_candidate_set() {
+    let app = App::new(test_options(false), &Config::default());
+
+    assert_eq!(app.mention_menu_limit, 128);
+}
+
+#[test]
 fn composer_arrows_scroll_default_is_true_without_mouse_capture() {
     assert!(default_composer_arrows_scroll_for_platform(false, false));
 }

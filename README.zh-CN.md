@@ -315,7 +315,8 @@ codewhale --provider ollama --model codewhale-coder:1.3b
 
 ```bash
 codewhale                                       # 交互式 TUI
-codewhale "explain this function"              # 一次性提示
+codewhale "explain this function"              # 提交首条提示，并保持 TUI 打开
+codewhale exec "explain this function"         # 一次性提示
 codewhale exec --auto --output-format stream-json "fix this bug" # 面向后端集成的 NDJSON 流
 codewhale exec --resume <SESSION_ID> "follow up" # 继续非交互会话
 codewhale --model deepseek-v4-flash "summarize" # 指定模型
@@ -612,9 +613,9 @@ v0.8.48 稳定性收割中特别感谢 **[reidliu41](https://github.com/reidliu4
 - **[mvanhorn](https://github.com/mvanhorn)** — 全局 AGENTS.md 厂商中立回退 (#2156)
 - **[zlh124](https://github.com/zlh124)** — Windows batch 启动器打包，以及 WSL/headless 启动问题跟进 (#1772, #1773, #1861)
 - **[cy2311](https://github.com/cy2311)** — 面向 v0.8.48 稳定性的重启后 holding-turn 校验 (#2325)
-- **[nightt5879](https://github.com/nightt5879)** — deferred tool-search 结果数量上限修复 (#2344)
+- **[nightt5879](https://github.com/nightt5879)** — 交互式启动提示行为和 deferred tool-search 结果数量上限修复 (#2373, #2344)
 - **[yyyCode](https://github.com/yyyCode)** — `~/.codewhale` 状态目录迁移的文档偏差报告 (#2322)
-- **[buko](https://github.com/buko)** — Cygwin/HOME 配置路径分裂报告和补丁说明 (#2369)
+- **[buko](https://github.com/buko)** — Cygwin/HOME 配置路径分裂和 @-mention 菜单上限报告 (#2369, #2360)
 - **[T-Phuong-Nguyen](https://github.com/T-Phuong-Nguyen)** — MCP tool-search 结果数量问题报告 (#2339)
 
 ---

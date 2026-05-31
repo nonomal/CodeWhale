@@ -21,6 +21,8 @@ This release bundles the work that was prepared on the v0.8.47 integration branc
 - **Permanent V4 Pro 75% discount.** Removed the time-gated 2026-05-31 cutoff; the lower rate is now permanent (#1937, contributed by Colorful-glassblock).
 - **Model picker per-provider slices.** Replaced the boolean `hide_deepseek_models` flag with per-provider model/effort slices; resolves model-picker drift when running on non-DeepSeek providers.
 - **Prompt-cache layout stays stable across mode switches.** Moved the mode-varying tool taxonomy to the dynamic tail of the system prompt so Plan/Agent/YOLO switches preserve the static prefix cache.
+- **Railway-first US web deployment.** The website docs now put Railway ahead of Cloudflare for US-hosted app testing while keeping Cloudflare for edge cron/KV, and `web/railway.json` captures the Next.js build/start commands.
+- **Top-level prompts stay interactive.** `codewhale "prompt"` / `codewhale -p "prompt"` now submit the first prompt into the TUI and keep the session open for follow-ups; use `codewhale exec "prompt"` for explicit one-shot output.
 
 ### Fixed
 
@@ -44,6 +46,7 @@ This release bundles the work that was prepared on the v0.8.47 integration branc
 - **Windows release launcher asset.** The release asset list now includes `codewhale.bat`, and both local release prep and the GitHub release workflow generate it with the low-motion env set before launch (#1861, contributed by cy2311).
 - **Config/settings path convergence.** Runtime config, TUI settings, READMEs, and website docs now use `~/.codewhale/` as the canonical state root while retaining `~/.deepseek/` and old XDG settings fallbacks; config home resolution also respects `HOME` for Cygwin-style shells (#2322 reported by yyyCode; #2369 reported by buko).
 - **Deferred tool search returns enough MCP hits.** `tool_search_tool_regex` and `tool_search_tool_bm25` now default to 20 results, expose `max_results`, and cap at 100 so overlapping MCP tool keywords do not hide later servers (#2344, contributed by nightt5879; #2339 reported by T-Phuong-Nguyen).
+- **@-mention menu cap is scrollable.** The composer file-mention popup now keeps up to 128 candidates by default instead of truncating the source list at six entries, with `mention_menu_limit` available in `settings.toml` (#2360 reported by buko).
 - **Dependency refresh.** Updated `tar` from 0.4.45 to 0.4.46.
 
 ### Deprecated

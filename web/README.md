@@ -2,7 +2,9 @@
 
 Community site for [CodeWhale](https://github.com/Hmbown/CodeWhale) — lives at **codewhale.net**.
 
-Next.js 15 (App Router) + Tailwind, deployed to Cloudflare Workers via [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare). Curated "Today's Dispatch" content is regenerated every 6 hours by a Cloudflare Cron Trigger that calls `deepseek-v4-flash` to summarise recent repo activity, and stored in Workers KV.
+Next.js 15 (App Router) + Tailwind. For US-facing hosting, deploy the app to
+Railway first using the standard Next.js server path. Cloudflare Workers remains
+the edge/cron route for `codewhale.net` and for the KV-backed dispatch workflow.
 
 ## Local dev
 
@@ -24,9 +26,35 @@ Required env (only for the curator + private-repo rate limits):
 
 The site renders fine without any of them — `Today's Dispatch` falls back to a static editorial; the GitHub feed shows "feed not yet loaded".
 
-## Deploy to Cloudflare
+## Deploy to Railway First
 
-You already own `codewhale.net` on Cloudflare and have a Workers Paid plan. The deploy is two steps:
+Use Railway as the first US-hosted target:
+
+1. Create a Railway service from this repository with `web/` as the root
+   directory.
+2. Railway will read `web/railway.json`; the build command is `npm run build`
+   and the start command is `npm run start`.
+3. Set only the secrets you need:
+
+   ```bash
+   DEEPSEEK_API_KEY=...
+   GITHUB_TOKEN=...      # optional, raises GitHub rate limits
+   GITHUB_REPO=Hmbown/CodeWhale
+   CRON_SECRET=...       # optional, for manual /api/cron?task=curate hits
+   ```
+
+4. Point the temporary US test domain at the Railway service before moving the
+   public `codewhale.net` route.
+
+Railway does not provide the existing Workers KV binding. The site still renders
+without KV by falling back to static generated facts and an in-memory cache; use
+Cloudflare for the scheduled KV curator until that storage path is replaced.
+
+## Deploy to Cloudflare Edge/Cron
+
+You already own `codewhale.net` on Cloudflare and have a Workers Paid plan. Use
+this route when you need Workers KV, Cron Triggers, or the existing production
+edge deployment. The deploy is two steps:
 
 1. **Provision KV namespaces once:**
 

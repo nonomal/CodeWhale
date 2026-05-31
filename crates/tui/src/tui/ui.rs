@@ -141,7 +141,6 @@ use super::widgets::{ChatWidget, ComposerWidget, HeaderData, HeaderWidget, Rende
 /// Bumped from 6 to 128 to fix #64 (selection couldn't reach commands beyond
 /// the visible window because the source list itself was capped).
 const SLASH_MENU_LIMIT: usize = 128;
-const MENTION_MENU_LIMIT: usize = 6;
 const MIN_CHAT_HEIGHT: u16 = 3;
 const MIN_COMPOSER_HEIGHT: u16 = 2;
 const CONTEXT_WARNING_THRESHOLD_PERCENT: f64 = 85.0;
@@ -559,6 +558,8 @@ pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
         let handle = persistence_actor::spawn_persistence_actor(persist_manager);
         persistence_actor::init_actor(handle);
     }
+
+    submit_initial_input_if_ready(&mut app, config, &engine_handle).await?;
 
     let result = run_event_loop(
         &mut terminal,
@@ -2912,7 +2913,7 @@ async fn run_event_loop(
                 app.slash_menu_selected = slash_menu_entries.len().saturating_sub(1);
             }
             let mention_menu_entries =
-                crate::tui::file_mention::visible_mention_menu_entries(app, MENTION_MENU_LIMIT);
+                crate::tui::file_mention::visible_mention_menu_entries(app, app.mention_menu_limit);
             let mention_menu_open = !mention_menu_entries.is_empty();
             if mention_menu_open && app.mention_menu_selected >= mention_menu_entries.len() {
                 app.mention_menu_selected = mention_menu_entries.len().saturating_sub(1);
@@ -4245,6 +4246,35 @@ fn replace_matching_assistant_text(
 fn build_queued_message(app: &mut App, input: String) -> QueuedMessage {
     let skill_instruction = app.active_skill.take();
     QueuedMessage::new(input, skill_instruction)
+}
+
+const INITIAL_PROMPT_DEFERRED_STATUS: &str = "Initial prompt ready; complete setup to send it";
+
+async fn submit_initial_input_if_ready(
+    app: &mut App,
+    config: &Config,
+    engine_handle: &EngineHandle,
+) -> Result<()> {
+    if !app.auto_submit_initial_input {
+        return Ok(());
+    }
+
+    if app.onboarding != OnboardingState::None {
+        if app.status_message.is_none() && !app.input.trim().is_empty() {
+            app.status_message = Some(INITIAL_PROMPT_DEFERRED_STATUS.to_string());
+        }
+        return Ok(());
+    }
+
+    app.auto_submit_initial_input = false;
+    if let Some(input) = app.submit_input() {
+        if app.status_message.as_deref() == Some(INITIAL_PROMPT_DEFERRED_STATUS) {
+            app.status_message = None;
+        }
+        let queued = build_queued_message(app, input);
+        dispatch_user_message(app, config, engine_handle, queued).await?;
+    }
+    Ok(())
 }
 
 fn approval_request_from_event_input(
@@ -5854,7 +5884,7 @@ fn render(f: &mut Frame, app: &mut App) {
     let footer_height = 1;
     let slash_menu_entries = visible_slash_menu_entries(app, SLASH_MENU_LIMIT);
     let mention_menu_entries =
-        crate::tui::file_mention::visible_mention_menu_entries(app, MENTION_MENU_LIMIT);
+        crate::tui::file_mention::visible_mention_menu_entries(app, app.mention_menu_limit);
     if !mention_menu_entries.is_empty() && app.mention_menu_selected >= mention_menu_entries.len() {
         app.mention_menu_selected = mention_menu_entries.len().saturating_sub(1);
     }

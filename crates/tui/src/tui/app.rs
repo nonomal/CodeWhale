@@ -810,11 +810,20 @@ pub struct TuiOptions {
     pub yolo: bool,
     /// Resume a previous session by ID
     pub resume_session_id: Option<String>,
-    /// Pre-populate the composer with this text when the TUI starts.
-    /// Used by `deepseek pr <N>` (#451) to drop the model into a
-    /// session with the PR context already typed — the user can edit
-    /// before sending or hit Enter to fire as-is.
-    pub initial_input: Option<String>,
+    /// Initial composer input when the TUI starts.
+    pub initial_input: Option<InitialInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InitialInput {
+    /// Pre-populate the composer and wait for the user to press Enter.
+    ///
+    /// Used by `codewhale pr <N>` (#451) to drop the model into a session
+    /// with PR context already typed so the user can edit before sending.
+    Prefill(String),
+    /// Pre-populate the composer, submit it once startup is ready, then keep
+    /// the interactive session open for follow-up messages (#2370).
+    Submit(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1215,6 +1224,7 @@ pub struct App {
     #[allow(dead_code)]
     pub compact_threshold: usize,
     pub max_input_history: usize,
+    pub mention_menu_limit: usize,
     pub allow_shell: bool,
     pub max_subagents: usize,
     /// Cached sub-agent snapshots for UI views.
@@ -1440,6 +1450,8 @@ pub struct App {
     /// Most recent user prompt accepted for an active engine turn. Ctrl+C can
     /// restore this into an empty composer after cancelling that turn.
     pub last_submitted_prompt: Option<String>,
+    /// Startup prompt should be submitted automatically after the engine is ready.
+    pub auto_submit_initial_input: bool,
     /// Two-tap quit confirmation. When set, a prior Ctrl+C in idle state has
     /// armed the quit shortcut; a second Ctrl+C before this `Instant` exits
     /// the app, while expiry silently re-arms the prompt for next time.
@@ -1813,17 +1825,22 @@ impl App {
         let cached_skills = Self::discover_cached_skills(&workspace, &skills_dir);
 
         let input_history = crate::composer_history::load_history();
-        let (initial_input_text, initial_input_cursor) = match initial_input {
-            // #451: pre-populate the composer when invoked via
-            // `deepseek pr <N>` (or any future caller that wants to
-            // drop the model into a session with context already
-            // typed). Cursor lands at the end so Enter sends as-is.
-            Some(text) if !text.is_empty() => {
-                let cursor = text.len();
-                (text, cursor)
-            }
-            _ => (String::new(), 0),
-        };
+        let (initial_input_text, initial_input_cursor, auto_submit_initial_input) =
+            match initial_input {
+                // #451: pre-populate the composer when invoked via
+                // `codewhale pr <N>` (or any future caller that wants to
+                // drop the model into a session with context already typed).
+                // Cursor lands at the end so Enter sends as-is.
+                Some(InitialInput::Prefill(text)) if !text.is_empty() => {
+                    let cursor = text.chars().count();
+                    (text, cursor, false)
+                }
+                Some(InitialInput::Submit(text)) if !text.is_empty() => {
+                    let cursor = text.chars().count();
+                    (text, cursor, true)
+                }
+                _ => (String::new(), 0, false),
+            };
         Self {
             mode: initial_mode,
             composer: ComposerState {
@@ -1906,6 +1923,7 @@ impl App {
             file_tree_visible: false,
             compact_threshold,
             max_input_history,
+            mention_menu_limit: settings.mention_menu_limit,
             allow_shell,
             max_subagents,
             subagent_cache: Vec::new(),
@@ -2013,6 +2031,7 @@ impl App {
             coherence_state: CoherenceState::default(),
             last_send_at: None,
             last_submitted_prompt: None,
+            auto_submit_initial_input,
             quit_armed_until: None,
             cycle_count: 0,
             cycle_briefings: Vec::new(),

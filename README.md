@@ -382,7 +382,8 @@ interfaces, and extension points.
 
 ```bash
 codewhale                                         # interactive TUI
-codewhale "explain this function"                 # one-shot prompt
+codewhale "explain this function"                 # submit first prompt, keep TUI open
+codewhale exec "explain this function"            # one-shot prompt
 codewhale exec --auto --output-format stream-json "fix this bug"  # NDJSON backend stream
 codewhale exec --resume <SESSION_ID> "follow up"  # continue a non-interactive session
 codewhale --model deepseek-v4-flash "summarize"   # model override
@@ -672,7 +673,7 @@ and **[T-Phuong-Nguyen](https://github.com/T-Phuong-Nguyen)**.
 - **[zlh124](https://github.com/zlh124)** — WSL2/headless startup report and clipboard-init fix (#1772, #1773)
 - **[aboimpinto](https://github.com/aboimpinto)** — Windows alt-screen logging, Home/End composer, runtime log follow-ups, taskbar progress, animated title spinner, and configurable completion sound (#1774, #1776, #1748, #1749, #1782, #1783, #1871, #1910)
 - **[LeoLin990405](https://github.com/LeoLin990405)** — provider model passthrough, reasoning replay, thinking-only turn, and Windows quoting fixes (#1740, #1743, #1742, #1744)
-- **[nightt5879](https://github.com/nightt5879)** — Ctrl+C prompt restore fix and deferred tool-search result limit fix (#1764, #2344)
+- **[nightt5879](https://github.com/nightt5879)** — Ctrl+C prompt restore fix, interactive startup prompt behavior, and deferred tool-search result limit fix (#1764, #2373, #2344)
 - **[donglovejava](https://github.com/donglovejava)** — paste @file consolidation, CJK panic fix, user feedback, RLM routing, edit_file retry, animated compaction liveness, and CJK/IME composer input (#2154–#2168, #2302, #2330)
 - **[encyc](https://github.com/encyc)** — session token breakdown in footer and `/status` (#2152)
 - **[saieswar237](https://github.com/saieswar237)** — review pipeline docs (#2178)
@@ -699,7 +700,7 @@ and **[T-Phuong-Nguyen](https://github.com/T-Phuong-Nguyen)**.
 - **[zlh124](https://github.com/zlh124)** — Windows batch launcher packaging and WSL/headless startup follow-through (#1772, #1773, #1861)
 - **[cy2311](https://github.com/cy2311)** — restart-safe holding-turn validation for v0.8.48 release hardening (#2325)
 - **[yyyCode](https://github.com/yyyCode)** — documentation report for the `~/.codewhale` state-root migration (#2322)
-- **[buko](https://github.com/buko)** — Cygwin/HOME config-path fragmentation report and patch notes (#2369)
+- **[buko](https://github.com/buko)** — Cygwin/HOME config-path fragmentation and @-mention menu limit reports (#2369, #2360)
 - **[T-Phuong-Nguyen](https://github.com/T-Phuong-Nguyen)** — MCP tool-search result-limit report (#2339)
 
 ---
