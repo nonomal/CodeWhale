@@ -92,6 +92,7 @@ to the model, such as `mcp_<server>_<tool>`.
 | `git_diff` | Inspect working-tree or staged diffs. |
 | `diagnostics` | Workspace, git, sandbox, and toolchain info in one call. |
 | `run_tests` | `cargo test` with optional args. |
+| `run_verifiers` | Run independent verifier gates in parallel across detected Rust, Node, Python, and Go projects, with optional custom `program` + `args` gates for other ecosystems. |
 
 ### Task management and durable work
 

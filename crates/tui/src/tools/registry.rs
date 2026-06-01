@@ -612,7 +612,9 @@ impl ToolRegistryBuilder {
     #[must_use]
     pub fn with_test_runner_tool(self) -> Self {
         use super::test_runner::RunTestsTool;
+        use super::verifier::RunVerifiersTool;
         self.with_tool(Arc::new(RunTestsTool))
+            .with_tool(Arc::new(RunVerifiersTool))
     }
 
     /// Include structured data validation tool (`validate_data`).

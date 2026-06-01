@@ -261,6 +261,7 @@ fn test_verifier_allowed_tools_include_test_runner_but_no_writes() {
     #[allow(deprecated)]
     let tools = SubAgentType::Verifier.allowed_tools();
     assert!(tools.contains(&"run_tests"));
+    assert!(tools.contains(&"run_verifiers"));
     assert!(tools.contains(&"diagnostics"));
     assert!(!tools.contains(&"write_file"));
     assert!(!tools.contains(&"apply_patch"));

@@ -51,6 +51,7 @@ pub(super) const DEFAULT_ACTIVE_NATIVE_TOOLS: &[&str] = &[
     "list_dir",
     "read_file",
     "run_tests",
+    "run_verifiers",
     "task_create",
     "task_list",
     "task_read",

@@ -56,6 +56,7 @@ pub mod tool_result_retrieval;
 pub mod truncate;
 pub mod user_input;
 pub mod validate_data;
+pub mod verifier;
 pub mod web_run;
 pub mod web_search;
 

@@ -520,6 +520,7 @@ impl SubAgentType {
                 "exec_wait",
                 "exec_interact",
                 "run_tests",
+                "run_verifiers",
                 "diagnostics",
                 "note",
             ],
