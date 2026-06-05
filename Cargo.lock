@@ -981,6 +981,7 @@ dependencies = [
  "ignore",
  "image",
  "libc",
+ "lru",
  "multimap",
  "objc2",
  "objc2-foundation",

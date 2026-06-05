@@ -75,6 +75,7 @@ impl DeepSeekClient {
         &self,
         request: &MessageRequest,
     ) -> Result<MessageResponse> {
+        let cacheable = crate::llm_response_cache::request_is_cacheable(request);
         let messages = build_chat_messages_for_request_and_provider(request, self.api_provider);
         let model = wire_model_for_provider(self.api_provider, &request.model);
         let mut body = json!({
@@ -121,6 +122,24 @@ impl DeepSeekClient {
             self.api_provider,
         );
 
+        let response_cache_key = if cacheable {
+            let wire_body =
+                serde_json::to_vec(&body).context("Failed to serialize Chat API cache key")?;
+            let key = crate::llm_response_cache::ResponseCache::make_key(
+                self.api_provider.as_str(),
+                &self.base_url,
+                self.path_suffix.as_deref(),
+                &self.api_key,
+                &wire_body,
+            );
+            if let Some(cached) = crate::llm_response_cache::response_cache().get(&key) {
+                return Ok(cached);
+            }
+            Some(key)
+        } else {
+            None
+        };
+
         let url = api_url_with_suffix(
             &self.base_url,
             "chat/completions",
@@ -158,7 +177,11 @@ impl DeepSeekClient {
         let response_text = response.text().await.unwrap_or_default();
         let value: Value =
             serde_json::from_str(&response_text).context("Failed to parse Chat API JSON")?;
-        parse_chat_message(&value)
+        let parsed = parse_chat_message(&value)?;
+        if let Some(key) = response_cache_key {
+            crate::llm_response_cache::response_cache().put(key, parsed.clone());
+        }
+        Ok(parsed)
     }
 }
 

@@ -62,6 +62,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to Hugging Face's settings-generated MCP configuration and intentionally does
   not include Hub search, direct Hugging Face HTTP requests, or upload behavior
   (#2709, #2782). Thanks @idling11 for the original Hugging Face MCP draft.
+- Added an in-process response cache for deterministic non-streaming,
+  tool-free chat requests. The cache is keyed by provider, base URL, path
+  suffix, API-key fingerprint, and final wire body, and zeroes usage on hits so
+  local spend counters are not double-counted (#2501). Thanks @HUQIANTAO for
+  the response-cache proposal and canonical-body key update.
 - Added `/sidebar` so users can toggle, show, hide, and optionally persist the
   TUI sidebar from the command line instead of relying on copy-hostile sidebar
   state during long transcript work (#2766, #2788). Thanks @mo-vic for the
