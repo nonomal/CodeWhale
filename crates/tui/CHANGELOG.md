@@ -11,13 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Together AI provider (`[providers.together]`) with picker, auth, and
-  capability support, plus Qwen 3.7 Max, MiniMax 2.7, and NVIDIA Nemotron 3
-  Ultra catalog entries.
-- Experimental OpenAI Codex (ChatGPT) provider (`openai-codex`) that reuses an
-  existing Codex CLI OAuth login from `~/.codex/auth.json` and talks to the
-  OpenAI Responses API. See `docs/PROVIDERS.md`. The live round-trip is not
-  exercised in CI; treat as preview.
+- **Together AI provider.** Added Together AI as a first-class provider
+  (`[providers.together]`, `TOGETHER_API_KEY`/`TOGETHER_BASE_URL`/`TOGETHER_MODEL`)
+  with default models `deepseek-ai/DeepSeek-V4-Pro` and
+  `deepseek-ai/DeepSeek-V4-Flash`, TUI provider-picker/auth/capability support,
+  and CLI `auth list`/`auth status` coverage.
+- **Model catalog updates.** Added Qwen 3.7 Max (`qwen/qwen3.7-max`), MiniMax 2.7
+  (`minimax/minimax-2.7`), and NVIDIA Nemotron 3 Ultra (`nvidia/nemotron-3-ultra`)
+  on OpenRouter.
+- **OpenAI Codex (ChatGPT) provider — experimental.** Added an `openai-codex`
+  provider that reuses an existing ChatGPT/Codex CLI OAuth login. The access
+  token is read and refreshed from `~/.codex/auth.json` (no API key is stored),
+  and requests use the OpenAI Responses API at `/codex/responses` with the
+  `chatgpt-account-id` header and `responses=experimental` beta opt-in. Env
+  overrides: `OPENAI_CODEX_ACCESS_TOKEN`/`CODEX_ACCESS_TOKEN`,
+  `OPENAI_CODEX_BASE_URL`/`CODEX_BASE_URL`, `OPENAI_CODEX_MODEL`/`CODEX_MODEL`,
+  `OPENAI_CODEX_ACCOUNT_ID`/`CODEX_ACCOUNT_ID`, `OPENAI_CODEX_AUTH_FILE`,
+  `CODEX_HOME`. Default model `gpt-5.5`. The live Responses round-trip has not
+  been exercised against the production backend in CI; treat as preview.
 
 ## [0.8.54] - 2026-06-08
 
@@ -5866,7 +5877,8 @@ Welcome — and thank you.
 - Hooks system and config profiles
 - Example skills and launch assets
 
-[Unreleased]: https://github.com/Hmbown/CodeWhale/compare/v0.8.54...HEAD
+[Unreleased]: https://github.com/Hmbown/CodeWhale/compare/v0.8.55...HEAD
+[0.8.55]: https://github.com/Hmbown/CodeWhale/compare/v0.8.54...v0.8.55
 [0.8.54]: https://github.com/Hmbown/CodeWhale/compare/v0.8.53...v0.8.54
 [0.8.53]: https://github.com/Hmbown/CodeWhale/compare/v0.8.52...v0.8.53
 [0.8.52]: https://github.com/Hmbown/CodeWhale/compare/v0.8.51...v0.8.52
