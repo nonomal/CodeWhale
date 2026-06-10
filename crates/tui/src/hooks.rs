@@ -217,6 +217,30 @@ fn default_enabled() -> bool {
 }
 
 impl HooksConfig {
+    /// Load global hooks merged with project-local `.codewhale/hooks.toml` (#3026).
+    ///
+    /// Project hooks are appended after global hooks.  A malformed project file
+    /// logs a warning and falls back to global-only.
+    pub fn load_with_project(global: HooksConfig, workspace: &std::path::Path) -> HooksConfig {
+        let project_path = workspace.join(".codewhale").join("hooks.toml");
+        let Ok(contents) = std::fs::read_to_string(&project_path) else {
+            return global;
+        };
+        let project: HooksConfig = match toml::from_str(&contents) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to parse project hooks at {}: {e}; falling back to global hooks only",
+                    project_path.display()
+                );
+                return global;
+            }
+        };
+        let mut merged = global;
+        merged.hooks.extend(project.hooks);
+        merged
+    }
+
     /// Get hooks for a specific event
     pub fn hooks_for_event(&self, event: HookEvent) -> Vec<&Hook> {
         if !self.enabled {
@@ -482,6 +506,84 @@ enum MessageSubmitStdout {
     Unchanged,
     Replaced(String),
     Invalid(String),
+}
+
+/// Parsed stdout from a `tool_call_before` hook (#3026).
+///
+/// Hooks may emit a JSON decision on stdout:
+/// `{"decision": "allow"|"deny"|"ask", "reason": "...",
+///   "updatedInput": {...}, "additionalContext": "..."}`
+/// Non-JSON or empty stdout → legacy passthrough (allow).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolCallBeforeStdout {
+    pub decision: Option<ToolCallDecision>,
+    pub reason: Option<String>,
+    pub updated_input: Option<serde_json::Value>,
+    pub additional_context: Option<String>,
+}
+
+/// Decision a hook can return for a tool call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolCallDecision {
+    Allow,
+    Deny,
+    Ask,
+}
+
+fn parse_tool_call_before_stdout(stdout: &str) -> ToolCallBeforeStdout {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return ToolCallBeforeStdout {
+            decision: None,
+            reason: None,
+            updated_input: None,
+            additional_context: None,
+        };
+    }
+    let value: serde_json::Value = match serde_json::from_str(trimmed) {
+        Ok(v) => v,
+        Err(_) => {
+            // Non-JSON stdout → legacy passthrough
+            return ToolCallBeforeStdout {
+                decision: None,
+                reason: None,
+                updated_input: None,
+                additional_context: None,
+            };
+        }
+    };
+    let obj = match value.as_object() {
+        Some(o) => o,
+        None => {
+            return ToolCallBeforeStdout {
+                decision: None,
+                reason: None,
+                updated_input: None,
+                additional_context: None,
+            };
+        }
+    };
+    let decision = obj.get("decision").and_then(|v| v.as_str()).and_then(|s| match s {
+        "allow" => Some(ToolCallDecision::Allow),
+        "deny" => Some(ToolCallDecision::Deny),
+        "ask" => Some(ToolCallDecision::Ask),
+        _ => None,
+    });
+    let reason = obj
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let updated_input = obj.get("updatedInput").cloned();
+    let additional_context = obj
+        .get("additionalContext")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    ToolCallBeforeStdout {
+        decision,
+        reason,
+        updated_input,
+        additional_context,
+    }
 }
 
 /// Post-turn accumulated totals included in the `turn_end` observer payload.
@@ -862,13 +964,30 @@ impl HookExecutor {
         results
     }
 
+    /// Check whether a tool name matches a condition pattern with `*` glob support.
+    fn tool_name_matches_condition(tool_name: &str, pattern: &str) -> bool {
+        if !pattern.contains('*') {
+            return tool_name == pattern;
+        }
+        // Escape regex metacharacters except `*`, which becomes `.*`.
+        let escaped = regex::escape(pattern);
+        let regex_pattern = escaped.replace(r"\*", ".*");
+        let anchored = format!("^{regex_pattern}$");
+        regex::Regex::new(&anchored).is_ok_and(|re| re.is_match(tool_name))
+    }
+
     /// Check if a hook's condition matches the context
     #[allow(clippy::only_used_in_recursion)]
     fn matches_condition(&self, hook: &Hook, context: &HookContext) -> bool {
         match &hook.condition {
             None | Some(HookCondition::Always) => true,
             Some(HookCondition::ToolName { name }) => {
-                context.tool_name.as_ref().is_some_and(|n| n == name)
+                // #3026: Support `*` globs in tool_name conditions so
+                // `mcp__*` matches all MCP tools.  Exact names keep working.
+                context
+                    .tool_name
+                    .as_ref()
+                    .is_some_and(|n| Self::tool_name_matches_condition(n, name))
             }
             Some(HookCondition::ToolCategory { category }) => {
                 // Map tool names to categories
