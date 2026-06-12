@@ -53,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Anthropic stream readers now accept both `data: {...}` and `data:{...}` SSE
   frames, matching the spec and preventing providers that omit the optional
   space from streaming empty output. Thanks @wgeeker for the PR.
+- **Runtime thread detail N+1 reads (#3141).** `get_thread_detail` now scans
+  persisted turn items once and groups them by turn instead of reading the
+  items directory once per turn, preserving item order while keeping large
+  thread detail loads responsive.
 - **SiliconFlow China provider config (#2893/#2895).** `siliconflow-CN`
   now reads its own `[providers.siliconflow_cn]` / `[providers.siliconflow-CN]`
   table and falls back to `[providers.siliconflow]` only for unset
