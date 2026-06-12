@@ -35,7 +35,10 @@ pub(crate) fn should_drop_loading_mouse_motion(app: &App, mouse: MouseEvent) -> 
     match mouse.kind {
         MouseEventKind::Moved => {
             let over_sidebar = mouse_hits_rect(mouse, app.viewport.last_sidebar_area);
-            !(over_sidebar || app.sidebar_hover_tooltip.is_some())
+            let was_over_sidebar = app.last_mouse_pos.is_some_and(|(column, row)| {
+                point_hits_rect(column, row, app.viewport.last_sidebar_area)
+            });
+            !(over_sidebar || was_over_sidebar || app.sidebar_hover_tooltip.is_some())
         }
         MouseEventKind::Drag(_) => {
             // Sidebar drag-to-resize must stay live during active turns —
@@ -668,14 +671,18 @@ pub(crate) fn tick_selection_autoscroll(app: &mut App) {
 }
 
 pub(crate) fn mouse_hits_rect(mouse: MouseEvent, area: Option<Rect>) -> bool {
+    point_hits_rect(mouse.column, mouse.row, area)
+}
+
+fn point_hits_rect(column: u16, row: u16, area: Option<Rect>) -> bool {
     let Some(area) = area else {
         return false;
     };
 
-    mouse.column >= area.x
-        && mouse.column < area.x.saturating_add(area.width)
-        && mouse.row >= area.y
-        && mouse.row < area.y.saturating_add(area.height)
+    column >= area.x
+        && column < area.x.saturating_add(area.width)
+        && row >= area.y
+        && row < area.y.saturating_add(area.height)
 }
 
 pub(crate) fn open_context_menu(app: &mut App, mouse: MouseEvent) {

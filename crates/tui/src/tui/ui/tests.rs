@@ -831,6 +831,38 @@ fn loading_mouse_filter_allows_sidebar_hover_to_clear() {
 }
 
 #[test]
+fn loading_mouse_filter_allows_sidebar_exit_to_clear_highlight() {
+    let mut app = create_test_app();
+    app.is_loading = true;
+    app.viewport.last_sidebar_area = Some(Rect::new(60, 4, 20, 6));
+    app.last_mouse_pos = Some((60, 5));
+
+    let exit_left = MouseEvent {
+        kind: MouseEventKind::Moved,
+        column: 59,
+        row: 5,
+        modifiers: KeyModifiers::NONE,
+    };
+
+    assert!(
+        !should_drop_loading_mouse_motion(&app, exit_left),
+        "first move out of the sidebar must clear stale sidebar hover state"
+    );
+    handle_mouse_event(&mut app, exit_left);
+
+    assert_eq!(app.last_mouse_pos, Some((59, 5)));
+    assert!(should_drop_loading_mouse_motion(
+        &app,
+        MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 58,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        }
+    ));
+}
+
+#[test]
 fn jump_to_latest_button_click_scrolls_to_tail() {
     let mut app = create_test_app();
     app.viewport.transcript_scroll = TranscriptScroll::at_line(7);
