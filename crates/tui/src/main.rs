@@ -1764,8 +1764,8 @@ fn resolve_cors_origins(config: &Config, flag_origins: &[String]) -> Vec<String>
     for o in flag_origins {
         push(o);
     }
-    if let Ok(env_value) = std::env::var("CODEWHALE_CORS_ORIGINS")
-        .or_else(|_| std::env::var("DEEPSEEK_CORS_ORIGINS"))
+    if let Ok(env_value) =
+        std::env::var("CODEWHALE_CORS_ORIGINS").or_else(|_| std::env::var("DEEPSEEK_CORS_ORIGINS"))
     {
         for piece in env_value.split(',') {
             push(piece);

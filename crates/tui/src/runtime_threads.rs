@@ -3785,7 +3785,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -3893,7 +3893,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -3918,7 +3918,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -3985,7 +3985,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4019,7 +4019,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4082,7 +4082,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4127,7 +4127,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4172,7 +4172,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4206,7 +4206,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4257,7 +4257,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4384,7 +4384,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4460,7 +4460,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4554,7 +4554,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4642,7 +4642,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4739,7 +4739,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -4821,7 +4821,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
         let mut harness = install_mock_engine(&manager, &thread.id).await;
@@ -4934,7 +4934,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
         assert!(!manager.store.load_thread(&thread.id)?.auto_approve);
@@ -5020,7 +5020,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -5107,7 +5107,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -5218,7 +5218,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
 
@@ -5734,7 +5734,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
         seed_turns_with_user_messages(&manager, &thread.id, &["first", "second", "third"])?;
@@ -5771,7 +5771,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
         seed_turns_with_user_messages(&manager, &thread.id, &["a", "b", "c", "d"])?;
@@ -5801,7 +5801,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
         seed_turns_with_user_messages(&manager, &thread.id, &["only"])?;
@@ -5828,7 +5828,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
-            ..Default::default()
+                ..Default::default()
             })
             .await?;
         let turn_ids = seed_turns_with_user_messages(&manager, &thread.id, &["x", "y", "z"])?;

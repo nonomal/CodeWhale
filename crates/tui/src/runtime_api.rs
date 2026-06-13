@@ -528,7 +528,9 @@ pub async fn run_http_server(
         if let Some(token) = runtime_token.as_deref() {
             println!("Runtime API auth: generated bearer token for this process.");
             println!("  Authorization: Bearer {token}");
-            println!("  Set CODEWHALE_RUNTIME_TOKEN (or DEEPSEEK_RUNTIME_TOKEN as an alias) or pass --auth-token for a stable token.");
+            println!(
+                "  Set CODEWHALE_RUNTIME_TOKEN (or DEEPSEEK_RUNTIME_TOKEN as an alias) or pass --auth-token for a stable token."
+            );
         }
     } else if auth_enabled {
         println!("Runtime API auth: bearer token required for /v1/* routes.");

@@ -83,7 +83,10 @@ fn provider_fallback(app: &mut App, subcommand: Option<&str>) -> CommandResult {
                 );
             };
             CommandResult::with_message_and_action(
-                format!("Fallback chain reset to primary provider: {}.", primary.as_str()),
+                format!(
+                    "Fallback chain reset to primary provider: {}.",
+                    primary.as_str()
+                ),
                 AppAction::SwitchProvider {
                     provider: primary,
                     model: None,

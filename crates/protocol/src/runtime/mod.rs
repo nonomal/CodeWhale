@@ -275,8 +275,10 @@ mod tests {
             r#"{"type":"input_text","text":"x"}"#
         );
         assert_eq!(
-            serde_json::to_string(&DynamicToolCallContent::InputImage { image_url: "y".into() })
-                .unwrap(),
+            serde_json::to_string(&DynamicToolCallContent::InputImage {
+                image_url: "y".into()
+            })
+            .unwrap(),
             r#"{"type":"input_image","image_url":"y"}"#
         );
     }
@@ -293,7 +295,9 @@ mod tests {
     fn dynamic_tool_call_result_roundtrip_with_content() {
         let result = DynamicToolCallResult {
             success: true,
-            content: vec![DynamicToolCallContent::InputText { text: "done".into() }],
+            content: vec![DynamicToolCallContent::InputText {
+                text: "done".into(),
+            }],
         };
 
         let serialized = serde_json::to_string(&result).unwrap();
@@ -352,6 +356,9 @@ mod tests {
             "payload": {}
         }"#;
         let envelope: RuntimeEventEnvelope = serde_json::from_str(json).unwrap();
-        assert_eq!(envelope.schema_version, RUNTIME_EVENT_ENVELOPE_SCHEMA_VERSION);
+        assert_eq!(
+            envelope.schema_version,
+            RUNTIME_EVENT_ENVELOPE_SCHEMA_VERSION
+        );
     }
 }
