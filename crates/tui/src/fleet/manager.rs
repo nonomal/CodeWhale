@@ -652,39 +652,39 @@ impl FleetManager {
 
         // Register with the sub-agent manager for headless worker tracking.
         // The engine's agent_open path handles actual sub-agent spawning.
-        if let Some(ref mgr) = self.sub_agent_manager {
-            if let Ok(guard) = mgr.try_write() {
-                let run = self
-                    .ledger
-                    .rebuild_state()
-                    .ok()
-                    .and_then(|state| state.runs.get(&entry.run_id.0).cloned());
-                let worker_spec = run
-                    .as_ref()
-                    .and_then(|r| r.worker_specs.iter().find(|w| w.id == worker_id).cloned())
-                    .unwrap_or_else(|| FleetWorkerSpec {
-                        id: worker_id.to_string(),
-                        name: worker_id.to_string(),
-                        host: FleetHostSpec::Local,
-                        trust_level: Some(FleetTrustLevel::Local),
-                        labels: BTreeMap::new(),
-                        capabilities: vec![],
-                        max_concurrent_tasks: Some(1),
-                    });
-                let worker = worker_runtime::fleet_task_to_worker_spec(
-                    worker_id,
-                    &entry.run_id.0,
-                    task_spec,
-                    &worker_spec,
-                    "auto",
-                    &self.workspace,
-                );
-                let worker = worker_runtime::apply_exec_hardening(worker, &self.exec_config);
-                // drop guard after registering so we don't hold the write lock
-                drop(guard);
-                if let Ok(mut guard) = mgr.try_write() {
-                    guard.register_worker(worker);
-                }
+        if let Some(ref mgr) = self.sub_agent_manager
+            && let Ok(guard) = mgr.try_write()
+        {
+            let run = self
+                .ledger
+                .rebuild_state()
+                .ok()
+                .and_then(|state| state.runs.get(&entry.run_id.0).cloned());
+            let worker_spec = run
+                .as_ref()
+                .and_then(|r| r.worker_specs.iter().find(|w| w.id == worker_id).cloned())
+                .unwrap_or_else(|| FleetWorkerSpec {
+                    id: worker_id.to_string(),
+                    name: worker_id.to_string(),
+                    host: FleetHostSpec::Local,
+                    trust_level: Some(FleetTrustLevel::Local),
+                    labels: BTreeMap::new(),
+                    capabilities: vec![],
+                    max_concurrent_tasks: Some(1),
+                });
+            let worker = worker_runtime::fleet_task_to_worker_spec(
+                worker_id,
+                &entry.run_id.0,
+                task_spec,
+                &worker_spec,
+                "auto",
+                &self.workspace,
+            );
+            let worker = worker_runtime::apply_exec_hardening(worker, &self.exec_config);
+            // drop guard after registering so we don't hold the write lock
+            drop(guard);
+            if let Ok(mut guard) = mgr.try_write() {
+                guard.register_worker(worker);
             }
         }
 

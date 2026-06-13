@@ -317,11 +317,12 @@ pub enum FleetHostSpec {
 /// The trust level determines what a worker is allowed to do and what
 /// secrets it may access. The default for new workers is [`FleetTrustLevel::Sandbox`];
 /// operators must explicitly raise trust for SSH or container workers.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum FleetTrustLevel {
     /// Fully isolated: no network, no secrets, no writes outside `.codewhale/fleet/`.
     /// Suitable for untrusted code review, community PR checks, or third-party tool runs.
+    #[default]
     Sandbox = 0,
     /// Local-only worker with access to the workspace and configured secrets.
     /// Default for local workers. May read repo files but writes are gated.
@@ -335,12 +336,6 @@ pub enum FleetTrustLevel {
     /// Has access to all configured secrets and may perform any action the
     /// operator can. Reserved for dogfood smoke and operator-owned machines.
     Operator = 3,
-}
-
-impl Default for FleetTrustLevel {
-    fn default() -> Self {
-        Self::Sandbox
-    }
 }
 
 impl FleetTrustLevel {

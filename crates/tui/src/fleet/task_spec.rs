@@ -37,7 +37,7 @@ pub struct FleetTaskSpecDocument {
 enum FleetTaskSpecFile {
     Document(FleetTaskSpecDocument),
     Tasks(Vec<FleetTaskSpec>),
-    Single(FleetTaskSpec),
+    Single(Box<FleetTaskSpec>),
 }
 
 impl FleetTaskSpecFile {
@@ -61,7 +61,7 @@ impl FleetTaskSpecFile {
                 labels: BTreeMap::new(),
                 security_policy: None,
                 workers: Vec::new(),
-                tasks: vec![task],
+                tasks: vec![*task],
             },
         }
     }
@@ -133,6 +133,7 @@ pub fn validate_task_spec_document(doc: &FleetTaskSpecDocument) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn write_fleet_artifact_ref(
     workspace: &Path,
     run_id: &FleetRunId,

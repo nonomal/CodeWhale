@@ -178,10 +178,7 @@ impl FleetScheduler {
         worker_id: &str,
         report: &mut FleetSchedulerReport,
     ) -> Result<()> {
-        let retry_policy = task_spec
-            .retry_policy
-            .clone()
-            .unwrap_or_else(FleetRetryPolicy::default);
+        let retry_policy = task_spec.retry_policy.clone().unwrap_or_default();
         if task.entry.attempts < retry_policy.max_attempts {
             let lease_expires_at = self.lease_expires_at();
             self.ledger.lease_task(
@@ -342,15 +339,14 @@ impl FleetScheduler {
     }
 
     fn task_is_stale(&self, task: &FleetTaskState, state: &FleetLedgerState) -> bool {
-        if let Some(worker_id) = task.leased_to.as_deref() {
-            if let Some(heartbeat) = state.heartbeats.get(worker_id)
-                && let Ok(last) = DateTime::parse_from_rfc3339(&heartbeat.timestamp)
-            {
-                let age = self.now.signed_duration_since(last.with_timezone(&Utc));
-                return age
-                    .to_std()
-                    .map_or(true, |age| age > self.policy.heartbeat_timeout);
-            }
+        if let Some(worker_id) = task.leased_to.as_deref()
+            && let Some(heartbeat) = state.heartbeats.get(worker_id)
+            && let Ok(last) = DateTime::parse_from_rfc3339(&heartbeat.timestamp)
+        {
+            let age = self.now.signed_duration_since(last.with_timezone(&Utc));
+            return age
+                .to_std()
+                .map_or(true, |age| age > self.policy.heartbeat_timeout);
         }
         if let Some(deadline) = task.entry.lease_deadline.as_deref()
             && let Ok(deadline) = DateTime::parse_from_rfc3339(deadline)
