@@ -12,7 +12,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 pub const FLEET_PROTOCOL_VERSION: &str = "0.1.0";
@@ -101,8 +101,7 @@ pub struct FleetArtifactRef {
 }
 
 /// Kind of artifact a task may produce or consume.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FleetArtifactKind {
     Log,
     Patch,
@@ -111,6 +110,51 @@ pub enum FleetArtifactKind {
     Checkpoint,
     Receipt,
     Other(String),
+}
+
+impl FleetArtifactKind {
+    fn as_wire_str(&self) -> &str {
+        match self {
+            Self::Log => "log",
+            Self::Patch => "patch",
+            Self::TestResult => "test_result",
+            Self::Report => "report",
+            Self::Checkpoint => "checkpoint",
+            Self::Receipt => "receipt",
+            Self::Other(kind) => kind.as_str(),
+        }
+    }
+
+    fn from_wire_str(value: &str) -> Self {
+        match value {
+            "log" => Self::Log,
+            "patch" => Self::Patch,
+            "test_result" => Self::TestResult,
+            "report" => Self::Report,
+            "checkpoint" => Self::Checkpoint,
+            "receipt" => Self::Receipt,
+            other => Self::Other(other.to_string()),
+        }
+    }
+}
+
+impl Serialize for FleetArtifactKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_wire_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for FleetArtifactKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_wire_str(&value))
+    }
 }
 
 /// Scoring rule used to verify a task result.
@@ -222,13 +266,16 @@ pub enum FleetWorkerEventPayload {
     },
     Heartbeat {
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         cpu_percent: Option<f32>,
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         memory_mb: Option<u64>,
     },
     Artifact(FleetArtifactRef),
     Completed {
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         exit_code: Option<i32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         summary: Option<String>,
@@ -264,12 +311,13 @@ pub enum FleetWorkerEventPayload {
 /// Retry policy for a task or worker.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FleetRetryPolicy {
+    #[serde(default = "default_retry_max_attempts")]
     pub max_attempts: u32,
-    #[serde(default)]
+    #[serde(default = "default_retry_initial_backoff_seconds")]
     pub initial_backoff_seconds: u64,
-    #[serde(default)]
+    #[serde(default = "default_retry_max_backoff_seconds")]
     pub max_backoff_seconds: u64,
-    #[serde(default)]
+    #[serde(default = "default_retry_backoff_multiplier")]
     pub backoff_multiplier: u32,
 }
 
@@ -282,6 +330,22 @@ impl Default for FleetRetryPolicy {
             backoff_multiplier: 2,
         }
     }
+}
+
+fn default_retry_max_attempts() -> u32 {
+    FleetRetryPolicy::default().max_attempts
+}
+
+fn default_retry_initial_backoff_seconds() -> u64 {
+    FleetRetryPolicy::default().initial_backoff_seconds
+}
+
+fn default_retry_max_backoff_seconds() -> u64 {
+    FleetRetryPolicy::default().max_backoff_seconds
+}
+
+fn default_retry_backoff_multiplier() -> u32 {
+    FleetRetryPolicy::default().backoff_multiplier
 }
 
 /// Alert/escalation policy attached to a task or run.
@@ -453,6 +517,58 @@ mod tests {
         let back: FleetArtifactRef = serde_json::from_str(&json).unwrap();
         assert_eq!(back.kind, artifact.kind);
         assert_eq!(back.size_bytes, Some(1024));
+    }
+
+    #[test]
+    fn artifact_kind_uses_flat_string_json() {
+        let known = serde_json::to_string(&FleetArtifactKind::TestResult).unwrap();
+        assert_eq!(known, "\"test_result\"");
+
+        let custom =
+            serde_json::to_string(&FleetArtifactKind::Other("coverage.xml".to_string())).unwrap();
+        assert_eq!(custom, "\"coverage.xml\"");
+
+        let parsed: FleetArtifactKind = serde_json::from_str("\"coverage.xml\"").unwrap();
+        assert_eq!(parsed, FleetArtifactKind::Other("coverage.xml".to_string()));
+    }
+
+    #[test]
+    fn retry_policy_missing_fields_use_nonzero_defaults() {
+        let policy: FleetRetryPolicy = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert_eq!(policy, FleetRetryPolicy::default());
+
+        let policy: FleetRetryPolicy =
+            serde_json::from_value(serde_json::json!({"max_attempts": 5})).unwrap();
+        assert_eq!(policy.max_attempts, 5);
+        assert_eq!(
+            policy.initial_backoff_seconds,
+            FleetRetryPolicy::default().initial_backoff_seconds
+        );
+        assert_eq!(
+            policy.max_backoff_seconds,
+            FleetRetryPolicy::default().max_backoff_seconds
+        );
+        assert_eq!(
+            policy.backoff_multiplier,
+            FleetRetryPolicy::default().backoff_multiplier
+        );
+    }
+
+    #[test]
+    fn sparse_worker_events_omit_absent_optional_fields() {
+        let heartbeat = FleetWorkerEventPayload::Heartbeat {
+            cpu_percent: None,
+            memory_mb: None,
+        };
+        let heartbeat_json = serde_json::to_value(&heartbeat).unwrap();
+        assert_eq!(heartbeat_json, serde_json::json!({"state": "heartbeat"}));
+
+        let completed = FleetWorkerEventPayload::Completed {
+            exit_code: None,
+            summary: None,
+        };
+        let completed_json = serde_json::to_value(&completed).unwrap();
+        assert_eq!(completed_json, serde_json::json!({"state": "completed"}));
     }
 
     #[test]
