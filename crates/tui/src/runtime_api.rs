@@ -37,6 +37,8 @@ use crate::automation_manager::{
     CreateAutomationRequest, SharedAutomationManager, UpdateAutomationRequest, spawn_scheduler,
 };
 use crate::config::{Config, DEFAULT_TEXT_MODEL};
+use crate::fleet::ledger::{FleetLedgerState, FleetTaskLedgerStatus};
+use crate::fleet::manager::{FleetManager, FleetStatusSnapshot, FleetWorkerInspection};
 use crate::mcp::McpPool;
 use crate::models::{ContentBlock, Message};
 use crate::runtime_threads::{
@@ -52,6 +54,9 @@ use crate::session_manager::{
 use crate::skill_state::SkillStateStore;
 use crate::task_manager::{
     NewTaskRequest, SharedTaskManager, TaskManager, TaskManagerConfig, TaskRecord, TaskSummary,
+};
+use codewhale_protocol::fleet::{
+    FleetArtifactKind, FleetRun, FleetRunId, FleetWorkerEventPayload, FleetWorkerStatus,
 };
 
 #[derive(Clone)]
@@ -585,6 +590,22 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             post(resume_session_thread),
         )
         .route("/v1/workspace/status", get(workspace_status))
+        .route("/v1/fleet/runs", get(list_fleet_runs))
+        .route("/v1/fleet/runs/{run_id}", get(get_fleet_run))
+        .route(
+            "/v1/fleet/runs/{run_id}/workers",
+            get(list_fleet_run_workers),
+        )
+        .route("/v1/fleet/runs/{run_id}/stop", post(stop_fleet_run))
+        .route("/v1/fleet/workers/{worker_id}", get(get_fleet_worker))
+        .route(
+            "/v1/fleet/workers/{worker_id}/interrupt",
+            post(interrupt_fleet_worker),
+        )
+        .route(
+            "/v1/fleet/workers/{worker_id}/restart",
+            post(restart_fleet_worker),
+        )
         .route("/v1/stream", post(stream_turn))
         .route("/v1/threads", get(list_threads).post(create_thread))
         .route("/v1/threads/summary", get(list_threads_summary))
@@ -1321,6 +1342,342 @@ async fn workspace_status(
     State(state): State<RuntimeApiState>,
 ) -> Result<Json<WorkspaceStatusResponse>, ApiError> {
     Ok(Json(collect_workspace_status(&state.workspace)))
+}
+
+async fn list_fleet_runs(State(state): State<RuntimeApiState>) -> Result<Json<Value>, ApiError> {
+    let manager = open_fleet_manager(&state)?;
+    let ledger_state = manager
+        .rebuild_state()
+        .map_err(|err| ApiError::internal(format!("Failed to rebuild fleet state: {err}")))?;
+    let runs: Vec<_> = ledger_state
+        .runs
+        .values()
+        .map(|run| fleet_run_summary_json(&manager, run, &ledger_state))
+        .collect::<Result<Vec<_>, _>>()?;
+    let status = manager
+        .status()
+        .map_err(|err| ApiError::internal(format!("Failed to read fleet status: {err}")))?;
+    Ok(Json(json!({
+        "status": fleet_status_json(&status),
+        "runs": runs,
+    })))
+}
+
+async fn get_fleet_run(
+    State(state): State<RuntimeApiState>,
+    Path(run_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let manager = open_fleet_manager(&state)?;
+    let ledger_state = manager
+        .rebuild_state()
+        .map_err(|err| ApiError::internal(format!("Failed to rebuild fleet state: {err}")))?;
+    let run = ledger_state
+        .runs
+        .get(&run_id)
+        .ok_or_else(|| ApiError::not_found(format!("fleet run '{run_id}' not found")))?;
+    Ok(Json(fleet_run_detail_json(&manager, run, &ledger_state)?))
+}
+
+async fn list_fleet_run_workers(
+    State(state): State<RuntimeApiState>,
+    Path(run_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let manager = open_fleet_manager(&state)?;
+    let ledger_state = manager
+        .rebuild_state()
+        .map_err(|err| ApiError::internal(format!("Failed to rebuild fleet state: {err}")))?;
+    let run = ledger_state
+        .runs
+        .get(&run_id)
+        .ok_or_else(|| ApiError::not_found(format!("fleet run '{run_id}' not found")))?;
+    let workers = run
+        .worker_specs
+        .iter()
+        .map(|worker| {
+            manager
+                .inspect_worker(&worker.id)
+                .map(|inspection| fleet_worker_json(&inspection))
+                .map_err(|err| {
+                    ApiError::internal(format!(
+                        "Failed to inspect fleet worker {}: {err}",
+                        worker.id
+                    ))
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Json(json!({
+        "run_id": run_id,
+        "workers": workers,
+    })))
+}
+
+async fn get_fleet_worker(
+    State(state): State<RuntimeApiState>,
+    Path(worker_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let manager = open_fleet_manager(&state)?;
+    let inspection = manager.inspect_worker(&worker_id).map_err(|err| {
+        ApiError::not_found(format!("fleet worker '{worker_id}' not found: {err}"))
+    })?;
+    Ok(Json(fleet_worker_json(&inspection)))
+}
+
+async fn interrupt_fleet_worker(
+    State(state): State<RuntimeApiState>,
+    Path(worker_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let manager = open_fleet_manager(&state)?;
+    let inspection = manager.interrupt_worker(&worker_id).map_err(|err| {
+        ApiError::bad_request(format!(
+            "Failed to interrupt fleet worker '{worker_id}': {err}"
+        ))
+    })?;
+    Ok(Json(json!({
+        "action": "interrupt",
+        "worker": fleet_worker_json(&inspection),
+    })))
+}
+
+async fn restart_fleet_worker(
+    State(state): State<RuntimeApiState>,
+    Path(worker_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let manager = open_fleet_manager(&state)?;
+    let inspection = manager.restart_worker(&worker_id).map_err(|err| {
+        ApiError::bad_request(format!(
+            "Failed to restart fleet worker '{worker_id}': {err}"
+        ))
+    })?;
+    Ok(Json(json!({
+        "action": "restart",
+        "worker": fleet_worker_json(&inspection),
+    })))
+}
+
+async fn stop_fleet_run(
+    State(state): State<RuntimeApiState>,
+    Path(run_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let manager = open_fleet_manager(&state)?;
+    let run_id = FleetRunId::from(run_id);
+    let stopped = manager.stop_run(&run_id).map_err(|err| {
+        ApiError::bad_request(format!("Failed to stop fleet run '{}': {err}", run_id.0))
+    })?;
+    let status = manager
+        .run_status(&run_id)
+        .map_err(|err| ApiError::internal(format!("Failed to read fleet run status: {err}")))?;
+    Ok(Json(json!({
+        "action": "stop",
+        "run_id": run_id.0,
+        "stopped": stopped,
+        "status": fleet_status_json(&status),
+    })))
+}
+
+fn open_fleet_manager(state: &RuntimeApiState) -> Result<FleetManager, ApiError> {
+    FleetManager::open(&state.workspace)
+        .map_err(|err| ApiError::internal(format!("Failed to open fleet manager: {err}")))
+}
+
+fn fleet_run_summary_json(
+    manager: &FleetManager,
+    run: &FleetRun,
+    ledger_state: &FleetLedgerState,
+) -> Result<Value, ApiError> {
+    let status = manager
+        .run_status(&run.id)
+        .map_err(|err| ApiError::internal(format!("Failed to read fleet run status: {err}")))?;
+    let task_statuses = ledger_state
+        .tasks
+        .values()
+        .filter(|task| task.entry.run_id == run.id)
+        .map(|task| {
+            json!({
+                "task_id": task.entry.task_id.clone(),
+                "status": fleet_task_status_label(task.status),
+                "leased_to": task.leased_to.clone(),
+                "attempts": task.entry.attempts,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "id": run.id.0.clone(),
+        "name": run.name.clone(),
+        "status": fleet_status_json(&status),
+        "task_count": run.task_specs.len(),
+        "worker_count": run.worker_specs.len(),
+        "tasks": task_statuses,
+        "labels": run.labels.clone(),
+        "created_at": run.created_at.clone(),
+        "updated_at": run.updated_at.clone(),
+        "completed_at": run.completed_at.clone(),
+    }))
+}
+
+fn fleet_run_detail_json(
+    manager: &FleetManager,
+    run: &FleetRun,
+    ledger_state: &FleetLedgerState,
+) -> Result<Value, ApiError> {
+    let mut value = fleet_run_summary_json(manager, run, ledger_state)?;
+    if let Some(map) = value.as_object_mut() {
+        map.insert("task_specs".to_string(), json!(run.task_specs.clone()));
+        map.insert("worker_specs".to_string(), json!(run.worker_specs.clone()));
+    }
+    Ok(value)
+}
+
+fn fleet_status_json(status: &FleetStatusSnapshot) -> Value {
+    json!({
+        "runs": status.runs,
+        "queued": status.queued,
+        "running": status.running,
+        "completed": status.completed,
+        "partial": status.partial,
+        "failed": status.failed,
+        "restarted": status.restarted,
+        "escalated": status.escalated,
+        "transport_failed": status.transport_failed,
+        "task_failed": status.task_failed,
+        "verifier_failed": status.verifier_failed,
+        "cancelled": status.cancelled,
+        "stale": status.stale,
+        "workers": status
+            .workers
+            .iter()
+            .map(|(worker_id, status)| {
+                (
+                    worker_id.clone(),
+                    Value::String(worker_status_label(status).to_string()),
+                )
+            })
+            .collect::<serde_json::Map<String, Value>>(),
+    })
+}
+
+fn fleet_worker_json(inspection: &FleetWorkerInspection) -> Value {
+    json!({
+        "worker_id": inspection.worker_id.clone(),
+        "status": worker_status_label(&inspection.status),
+        "run_id": inspection.current_run_id.as_ref().map(|run_id| run_id.0.clone()),
+        "task_id": inspection.current_task_id.clone(),
+        "objective": inspection.objective.clone(),
+        "role": inspection.role.clone(),
+        "host": inspection.host.clone(),
+        "latest_heartbeat_at": inspection.latest_heartbeat_at.clone(),
+        "latest_event": inspection.latest_event.as_ref().map(fleet_event_json),
+        "artifacts": inspection.artifacts.iter().map(fleet_artifact_json).collect::<Vec<_>>(),
+        "last_error": inspection.last_error.clone(),
+        "alert_state": inspection.alert_state.clone(),
+    })
+}
+
+fn fleet_artifact_json(artifact: &codewhale_protocol::fleet::FleetArtifactRef) -> Value {
+    json!({
+        "kind": artifact_kind_label(&artifact.kind),
+        "path": artifact.path.clone(),
+        "checksum": artifact.checksum.clone(),
+        "mime_type": artifact.mime_type.clone(),
+        "size_bytes": artifact.size_bytes,
+    })
+}
+
+fn fleet_event_json(event: &codewhale_protocol::fleet::FleetWorkerEvent) -> Value {
+    json!({
+        "seq": event.seq,
+        "run_id": event.run_id.0.clone(),
+        "worker_id": event.worker_id.clone(),
+        "task_id": event.task_id.clone(),
+        "timestamp": event.timestamp.clone(),
+        "label": fleet_event_label(&event.payload),
+        "payload": event.payload.clone(),
+    })
+}
+
+fn worker_status_label(status: &FleetWorkerStatus) -> &'static str {
+    match status {
+        FleetWorkerStatus::Unknown => "unknown",
+        FleetWorkerStatus::Online => "online",
+        FleetWorkerStatus::Busy => "busy",
+        FleetWorkerStatus::Offline => "offline",
+        FleetWorkerStatus::Unhealthy => "unhealthy",
+        FleetWorkerStatus::Draining => "draining",
+        FleetWorkerStatus::Retired => "retired",
+    }
+}
+
+fn fleet_task_status_label(status: FleetTaskLedgerStatus) -> &'static str {
+    match status {
+        FleetTaskLedgerStatus::Enqueued => "enqueued",
+        FleetTaskLedgerStatus::Leased => "leased",
+        FleetTaskLedgerStatus::Completed => "completed",
+        FleetTaskLedgerStatus::Failed => "failed",
+        FleetTaskLedgerStatus::Cancelled => "cancelled",
+    }
+}
+
+fn artifact_kind_label(kind: &FleetArtifactKind) -> String {
+    match kind {
+        FleetArtifactKind::Log => "log".to_string(),
+        FleetArtifactKind::Patch => "patch".to_string(),
+        FleetArtifactKind::TestResult => "test_result".to_string(),
+        FleetArtifactKind::Report => "report".to_string(),
+        FleetArtifactKind::Checkpoint => "checkpoint".to_string(),
+        FleetArtifactKind::Receipt => "receipt".to_string(),
+        FleetArtifactKind::Other(value) => value.clone(),
+    }
+}
+
+fn fleet_event_label(payload: &FleetWorkerEventPayload) -> String {
+    match payload {
+        FleetWorkerEventPayload::Queued => "queued".to_string(),
+        FleetWorkerEventPayload::Leased { .. } => "leased".to_string(),
+        FleetWorkerEventPayload::Starting => "starting".to_string(),
+        FleetWorkerEventPayload::Running => "running".to_string(),
+        FleetWorkerEventPayload::ModelWait { model } => model
+            .as_ref()
+            .map(|model| format!("model_wait model={model}"))
+            .unwrap_or_else(|| "model_wait".to_string()),
+        FleetWorkerEventPayload::RunningTool { tool, call_id } => call_id
+            .as_ref()
+            .map(|call_id| format!("running_tool tool={tool} call_id={call_id}"))
+            .unwrap_or_else(|| format!("running_tool tool={tool}")),
+        FleetWorkerEventPayload::Heartbeat { .. } => "heartbeat".to_string(),
+        FleetWorkerEventPayload::Artifact(artifact) => {
+            format!("artifact kind={}", artifact_kind_label(&artifact.kind))
+        }
+        FleetWorkerEventPayload::Completed { exit_code, summary } => match (exit_code, summary) {
+            (Some(code), Some(summary)) => format!("completed exit_code={code} {summary}"),
+            (Some(code), None) => format!("completed exit_code={code}"),
+            (None, Some(summary)) => format!("completed {summary}"),
+            (None, None) => "completed".to_string(),
+        },
+        FleetWorkerEventPayload::Failed {
+            reason,
+            recoverable,
+        } => {
+            format!("failed recoverable={recoverable} reason={reason}")
+        }
+        FleetWorkerEventPayload::Cancelled { cancelled_by } => cancelled_by
+            .as_ref()
+            .map(|by| format!("cancelled by={by}"))
+            .unwrap_or_else(|| "cancelled".to_string()),
+        FleetWorkerEventPayload::Interrupted { signal } => signal
+            .as_ref()
+            .map(|signal| format!("interrupted signal={signal}"))
+            .unwrap_or_else(|| "interrupted".to_string()),
+        FleetWorkerEventPayload::Stale { last_heartbeat_at } => last_heartbeat_at
+            .as_ref()
+            .map(|ts| format!("stale last_heartbeat_at={ts}"))
+            .unwrap_or_else(|| "stale".to_string()),
+        FleetWorkerEventPayload::Restarted { restart_count } => {
+            format!("restarted count={restart_count}")
+        }
+        FleetWorkerEventPayload::Escalated { channel, alert_id } => alert_id
+            .as_ref()
+            .map(|alert_id| format!("escalated channel={channel} alert_id={alert_id}"))
+            .unwrap_or_else(|| format!("escalated channel={channel}")),
+    }
 }
 
 async fn list_skills(
@@ -2981,13 +3338,37 @@ mod tests {
             tokio::task::JoinHandle<()>,
         )>,
     > {
+        spawn_test_server_with_root_token_mobile_workspace(
+            root,
+            sessions_dir,
+            runtime_token,
+            mobile_enabled,
+            PathBuf::from("."),
+        )
+        .await
+    }
+
+    async fn spawn_test_server_with_root_token_mobile_workspace(
+        root: PathBuf,
+        sessions_dir: PathBuf,
+        runtime_token: Option<String>,
+        mobile_enabled: bool,
+        workspace: PathBuf,
+    ) -> Result<
+        Option<(
+            SocketAddr,
+            SharedRuntimeThreadManager,
+            tokio::task::JoinHandle<()>,
+        )>,
+    > {
         let _ = rustls::crypto::ring::default_provider().install_default();
         fs::create_dir_all(&sessions_dir)?;
+        fs::create_dir_all(&workspace)?;
         let manager = TaskManager::start_with_executor(
             TaskManagerConfig {
                 data_dir: root.join("tasks"),
                 worker_count: 1,
-                default_workspace: PathBuf::from("."),
+                default_workspace: workspace.clone(),
                 default_model: DEFAULT_TEXT_MODEL.to_string(),
                 default_mode: "agent".to_string(),
                 allow_shell: false,
@@ -3017,7 +3398,7 @@ mod tests {
         });
         let runtime_threads: SharedRuntimeThreadManager = Arc::new(RuntimeThreadManager::open(
             config,
-            PathBuf::from("."),
+            workspace.clone(),
             RuntimeThreadManagerConfig::from_task_data_dir(root.join("runtime")),
         )?);
         runtime_threads.attach_task_manager(manager.clone());
@@ -3029,7 +3410,7 @@ mod tests {
         let auth_required = runtime_token.is_some();
         let state = RuntimeApiState {
             config: Config::default(),
-            workspace: PathBuf::from("."),
+            workspace,
             task_manager: manager,
             runtime_threads: runtime_threads.clone(),
             cors_origins: Vec::new(),
@@ -3522,6 +3903,128 @@ mod tests {
             .await?
             .status();
         assert_eq!(missing_status, StatusCode::NOT_FOUND);
+
+        handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn fleet_status_runtime_api_exposes_state_and_actions() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("codewhale-fleet-api-{}", Uuid::new_v4()));
+        let workspace = root.join("workspace");
+        fs::create_dir_all(&workspace)?;
+        let manager = FleetManager::open(&workspace)?;
+        let task = codewhale_protocol::fleet::FleetTaskSpec {
+            id: "task-a".to_string(),
+            name: "Task A".to_string(),
+            description: None,
+            objective: Some("Inspect fleet status through Runtime API".to_string()),
+            instructions: "Stay running for inspection.".to_string(),
+            worker: Some(codewhale_protocol::fleet::FleetTaskWorkerProfile {
+                role: Some("status-reviewer".to_string()),
+                tool_profile: Some("read-only".to_string()),
+                tools: vec!["rg".to_string()],
+                capabilities: vec!["fleet".to_string()],
+            }),
+            workspace: None,
+            input_files: Vec::new(),
+            context: Vec::new(),
+            budget: None,
+            tags: Vec::new(),
+            expected_artifacts: vec![FleetArtifactKind::Log],
+            scorer: None,
+            retry_policy: None,
+            alert_policy: None,
+            timeout_seconds: None,
+            metadata: std::collections::BTreeMap::new(),
+        };
+        let report = manager.create_run(
+            crate::fleet::task_spec::FleetTaskSpecDocument {
+                name: Some("api smoke".to_string()),
+                labels: std::collections::BTreeMap::new(),
+                workers: Vec::new(),
+                tasks: vec![task],
+            },
+            1,
+        )?;
+        let worker_id = report.worker_ids[0].clone();
+        let sessions_dir = root.join("sessions");
+        let Some((addr, _runtime_threads, handle)) =
+            spawn_test_server_with_root_token_mobile_workspace(
+                root.clone(),
+                sessions_dir,
+                None,
+                false,
+                workspace,
+            )
+            .await?
+        else {
+            return Ok(());
+        };
+        let client = crate::tls::reqwest_client();
+
+        let runs: serde_json::Value = client
+            .get(format!("http://{addr}/v1/fleet/runs"))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert_eq!(runs["status"]["running"], 1);
+        assert_eq!(runs["runs"][0]["id"], report.run_id.0);
+
+        let worker: serde_json::Value = client
+            .get(format!("http://{addr}/v1/fleet/workers/{worker_id}"))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert_eq!(
+            worker["objective"],
+            "Inspect fleet status through Runtime API"
+        );
+        assert_eq!(worker["role"], "status-reviewer");
+        assert_eq!(worker["host"], "local");
+        assert_eq!(worker["artifacts"][0]["kind"], "log");
+
+        let interrupted: serde_json::Value = client
+            .post(format!(
+                "http://{addr}/v1/fleet/workers/{worker_id}/interrupt"
+            ))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert_eq!(interrupted["action"], "interrupt");
+        assert_eq!(interrupted["worker"]["last_error"], "cancelled by operator");
+
+        let restarted: serde_json::Value = client
+            .post(format!(
+                "http://{addr}/v1/fleet/workers/{worker_id}/restart"
+            ))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert_eq!(restarted["action"], "restart");
+        assert_eq!(restarted["worker"]["status"], "busy");
+
+        let stopped: serde_json::Value = client
+            .post(format!(
+                "http://{addr}/v1/fleet/runs/{}/stop",
+                report.run_id.0
+            ))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert_eq!(stopped["action"], "stop");
+        assert_eq!(stopped["stopped"], 1);
+        assert_eq!(stopped["status"]["cancelled"], 1);
 
         handle.abort();
         Ok(())

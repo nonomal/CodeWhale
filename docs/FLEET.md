@@ -8,6 +8,8 @@ codewhale fleet init
 codewhale fleet run tasks.json --max-workers 4
 codewhale fleet status
 codewhale fleet inspect <worker-id>
+codewhale fleet logs <worker-id>
+codewhale fleet artifacts <worker-id>
 codewhale fleet interrupt <worker-id>
 codewhale fleet restart <worker-id>
 codewhale fleet stop --all
@@ -241,6 +243,31 @@ The payload includes the run id, worker id, task id, status, short reason, and
 safe inspection commands such as `codewhale fleet status` and
 `codewhale fleet inspect <worker-id>`. Endpoints, webhook secrets, and
 PagerDuty routing keys are shown as `<redacted:env:...>`.
+
+## Status Surfaces
+
+`codewhale fleet status` shows compact counts for queued, running, completed,
+partial, failed, restarted, escalated, cancelled, stale, and verifier/transport
+failure sources. `inspect` shows the worker state plus the current task
+objective, role, host, heartbeat, latest event, artifact refs, latest error, and
+alert state. `logs` prints bounded log artifact contents, and `artifacts` lists
+artifact refs without embedding large payloads.
+
+The Runtime API exposes the same ledger-backed projection behind the existing
+runtime auth middleware:
+
+```text
+GET  /v1/fleet/runs
+GET  /v1/fleet/runs/{run_id}
+GET  /v1/fleet/runs/{run_id}/workers
+GET  /v1/fleet/workers/{worker_id}
+POST /v1/fleet/workers/{worker_id}/interrupt
+POST /v1/fleet/workers/{worker_id}/restart
+POST /v1/fleet/runs/{run_id}/stop
+```
+
+Action endpoints call the same manager controls as the CLI and record their
+decisions in the fleet ledger.
 
 ## Host Adapters
 

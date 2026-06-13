@@ -54,6 +54,8 @@ pub struct FleetStatusSnapshot {
     pub completed: usize,
     pub partial: usize,
     pub failed: usize,
+    pub restarted: usize,
+    pub escalated: usize,
     pub transport_failed: usize,
     pub task_failed: usize,
     pub verifier_failed: usize,
@@ -68,10 +70,14 @@ pub struct FleetWorkerInspection {
     pub status: FleetWorkerStatus,
     pub current_run_id: Option<FleetRunId>,
     pub current_task_id: Option<String>,
+    pub objective: Option<String>,
+    pub role: Option<String>,
+    pub host: Option<String>,
     pub latest_heartbeat_at: Option<String>,
     pub latest_event: Option<FleetWorkerEvent>,
     pub artifacts: Vec<FleetArtifactRef>,
     pub last_error: Option<String>,
+    pub alert_state: Option<String>,
 }
 
 impl FleetManager {
@@ -92,6 +98,10 @@ impl FleetManager {
 
     pub fn ledger_path(&self) -> &Path {
         self.ledger.path()
+    }
+
+    pub fn rebuild_state(&self) -> Result<FleetLedgerState> {
+        self.ledger.rebuild_state()
     }
 
     pub fn load_task_spec(path: &Path) -> Result<FleetTaskSpecDocument> {
@@ -228,6 +238,21 @@ impl FleetManager {
         let latest_event = latest_event_for_worker(&state, worker_id).cloned();
         let current = active_task_for_worker(&state, worker_id)
             .or_else(|| latest_task_for_worker(&state, worker_id));
+        let current_run_id = current.as_ref().map(|task| task.entry.run_id.clone());
+        let current_task_id = current.as_ref().map(|task| task.entry.task_id.clone());
+        let (objective, role) = current
+            .as_ref()
+            .and_then(|task| task_spec_for_state(&state, task))
+            .map(|task_spec| {
+                (
+                    task_spec.objective.or(task_spec.description),
+                    task_spec.worker.and_then(|worker| worker.role),
+                )
+            })
+            .unwrap_or((None, None));
+        let host = current_run_id
+            .as_ref()
+            .and_then(|run_id| worker_host_for_run(&state, run_id, worker_id));
         let artifacts = state
             .artifact_events
             .values()
@@ -254,15 +279,20 @@ impl FleetManager {
             .heartbeats
             .get(worker_id)
             .map(|heartbeat| heartbeat.timestamp.clone());
+        let alert_state = latest_alert_for_worker(&state, worker_id);
         Ok(FleetWorkerInspection {
             worker_id: worker_id.to_string(),
             status,
-            current_run_id: current.as_ref().map(|task| task.entry.run_id.clone()),
-            current_task_id: current.map(|task| task.entry.task_id.clone()),
+            current_run_id,
+            current_task_id,
+            objective,
+            role,
+            host,
             latest_heartbeat_at,
             latest_event,
             artifacts,
             last_error,
+            alert_state,
         })
     }
 
@@ -363,6 +393,48 @@ impl FleetManager {
                 &timestamp(),
             )?;
         }
+        Ok(stopped)
+    }
+
+    pub fn stop_run(&self, run_id: &FleetRunId) -> Result<usize> {
+        let state = self.ledger.rebuild_state()?;
+        if !state.runs.contains_key(&run_id.0) {
+            bail!("fleet run {} does not exist", run_id.0);
+        }
+        let now = timestamp();
+        let mut stopped = 0usize;
+        for task in state
+            .tasks
+            .values()
+            .filter(|task| task.entry.run_id == *run_id)
+        {
+            if !matches!(
+                task.status,
+                FleetTaskLedgerStatus::Enqueued | FleetTaskLedgerStatus::Leased
+            ) {
+                continue;
+            }
+            if let Some(worker_id) = task.leased_to.as_deref() {
+                self.append_worker_event(
+                    &task.entry.run_id,
+                    worker_id,
+                    &task.entry.task_id,
+                    FleetWorkerEventPayload::Interrupted {
+                        signal: Some("stop_run".to_string()),
+                    },
+                )?;
+            }
+            self.ledger.mark_task_terminal_status(
+                &task.entry.run_id,
+                &task.entry.task_id,
+                task.leased_to.as_deref(),
+                &now,
+                FleetTaskLedgerStatus::Cancelled,
+            )?;
+            stopped += 1;
+        }
+        self.ledger
+            .update_run_status(run_id, FleetRunStatus::Cancelled, &timestamp())?;
         Ok(stopped)
     }
 
@@ -631,6 +703,16 @@ impl FleetManager {
                 None => {}
             }
         }
+        snapshot.restarted = state
+            .restarted_events
+            .values()
+            .filter(|event| run_filter.is_none_or(|run_id| event.run_id == *run_id))
+            .count();
+        snapshot.escalated = state
+            .escalated_events
+            .values()
+            .filter(|event| run_filter.is_none_or(|run_id| event.run_id == *run_id))
+            .count();
         snapshot
     }
 
@@ -741,6 +823,37 @@ fn next_enqueued_task_for_run(
     Some((task.entry.clone(), task_spec))
 }
 
+fn task_spec_for_state(state: &FleetLedgerState, task: &FleetTaskState) -> Option<FleetTaskSpec> {
+    state
+        .runs
+        .get(&task.entry.run_id.0)?
+        .task_specs
+        .iter()
+        .find(|spec| spec.id == task.entry.task_id)
+        .cloned()
+}
+
+fn worker_host_for_run(
+    state: &FleetLedgerState,
+    run_id: &FleetRunId,
+    worker_id: &str,
+) -> Option<String> {
+    let run = state.runs.get(&run_id.0)?;
+    let worker = run
+        .worker_specs
+        .iter()
+        .find(|worker| worker.id == worker_id)?;
+    Some(host_label(&worker.host))
+}
+
+fn host_label(host: &FleetHostSpec) -> String {
+    match host {
+        FleetHostSpec::Local => "local".to_string(),
+        FleetHostSpec::Ssh { host, .. } => format!("ssh:{host}"),
+        FleetHostSpec::Docker { image, .. } => format!("docker:{image}"),
+    }
+}
+
 fn latest_event_for_worker<'a>(
     state: &'a FleetLedgerState,
     worker_id: &str,
@@ -750,6 +863,25 @@ fn latest_event_for_worker<'a>(
         .values()
         .filter(|event| event.worker_id == worker_id)
         .max_by_key(|event| event.seq)
+}
+
+fn latest_alert_for_worker(state: &FleetLedgerState, worker_id: &str) -> Option<String> {
+    state
+        .escalated_events
+        .values()
+        .filter(|event| event.worker_id == worker_id)
+        .filter_map(|event| match &event.payload {
+            FleetWorkerEventPayload::Escalated { channel, alert_id } => Some((
+                event.seq,
+                alert_id
+                    .as_ref()
+                    .map(|alert_id| format!("escalated via {channel} alert_id={alert_id}"))
+                    .unwrap_or_else(|| format!("escalated via {channel}")),
+            )),
+            _ => None,
+        })
+        .max_by_key(|(seq, _)| *seq)
+        .map(|(_, message)| message)
 }
 
 fn latest_error_for_worker(state: &FleetLedgerState, worker_id: &str) -> Option<String> {
@@ -1062,5 +1194,77 @@ mod tests {
         assert_eq!(status.task_failed, 1);
         assert_eq!(status.verifier_failed, 1);
         assert_eq!(status.running, 0);
+    }
+
+    #[test]
+    fn fleet_status_counts_restarted_and_escalated_events() {
+        let tmp = TempDir::new().unwrap();
+        let manager = FleetManager::open(tmp.path()).unwrap();
+        let path = task_spec_file(&tmp, vec![task("task-a")]);
+        let report = manager.create_run_from_task_spec_path(&path, 1).unwrap();
+        let worker_id = &report.worker_ids[0];
+
+        manager.restart_worker(worker_id).unwrap();
+        manager
+            .append_worker_event(
+                &report.run_id,
+                worker_id,
+                "task-a",
+                FleetWorkerEventPayload::Escalated {
+                    channel: "slack".to_string(),
+                    alert_id: None,
+                },
+            )
+            .unwrap();
+
+        let status = manager.run_status(&report.run_id).unwrap();
+        assert_eq!(status.restarted, 1);
+        assert_eq!(status.escalated, 1);
+
+        manager.ledger.compact().unwrap();
+        let status = manager.run_status(&report.run_id).unwrap();
+        assert_eq!(status.restarted, 1);
+        assert_eq!(status.escalated, 1);
+    }
+
+    #[test]
+    fn fleet_status_inspect_exposes_task_context_host_and_alert() {
+        let tmp = TempDir::new().unwrap();
+        let manager = FleetManager::open(tmp.path()).unwrap();
+        let mut contextual = task("task-a");
+        contextual.objective = Some("Review the release ledger".to_string());
+        contextual.worker = Some(FleetTaskWorkerProfile {
+            role: Some("release-reviewer".to_string()),
+            tool_profile: Some("read-only".to_string()),
+            tools: vec!["git".to_string()],
+            capabilities: vec!["rust".to_string()],
+        });
+        let path = task_spec_file(&tmp, vec![contextual]);
+        let report = manager.create_run_from_task_spec_path(&path, 1).unwrap();
+        let worker_id = &report.worker_ids[0];
+        manager
+            .append_worker_event(
+                &report.run_id,
+                worker_id,
+                "task-a",
+                FleetWorkerEventPayload::Escalated {
+                    channel: "pagerduty".to_string(),
+                    alert_id: Some("alert-1".to_string()),
+                },
+            )
+            .unwrap();
+
+        let inspection = manager.inspect_worker(worker_id).unwrap();
+
+        assert_eq!(
+            inspection.objective.as_deref(),
+            Some("Review the release ledger")
+        );
+        assert_eq!(inspection.role.as_deref(), Some("release-reviewer"));
+        assert_eq!(inspection.host.as_deref(), Some("local"));
+        assert_eq!(
+            inspection.alert_state.as_deref(),
+            Some("escalated via pagerduty alert_id=alert-1")
+        );
     }
 }

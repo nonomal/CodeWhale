@@ -394,6 +394,16 @@ enum FleetCommand {
         /// Worker id printed by `codewhale fleet run`
         worker_id: String,
     },
+    /// Print bounded log artifacts for one worker
+    Logs {
+        /// Worker id printed by `codewhale fleet run`
+        worker_id: String,
+    },
+    /// List artifact refs for one worker
+    Artifacts {
+        /// Worker id printed by `codewhale fleet run`
+        worker_id: String,
+    },
     /// Interrupt a running worker task and record a terminal cancellation
     Interrupt {
         /// Worker id printed by `codewhale fleet run`
@@ -1538,13 +1548,15 @@ async fn run_fleet_command(workspace: &Path, args: FleetArgs) -> Result<()> {
 
     fn print_status(status: &FleetStatusSnapshot) {
         println!(
-            "fleet: runs={} queued={} running={} completed={} partial={} failed={} transport_failed={} task_failed={} verifier_failed={} cancelled={} stale={}",
+            "fleet: runs={} queued={} running={} completed={} partial={} failed={} restarted={} escalated={} transport_failed={} task_failed={} verifier_failed={} cancelled={} stale={}",
             status.runs,
             status.queued,
             status.running,
             status.completed,
             status.partial,
             status.failed,
+            status.restarted,
+            status.escalated,
             status.transport_failed,
             status.task_failed,
             status.verifier_failed,
@@ -1567,6 +1579,15 @@ async fn run_fleet_command(workspace: &Path, args: FleetArgs) -> Result<()> {
         }
         if let Some(task_id) = &inspection.current_task_id {
             println!("task: {task_id}");
+        }
+        if let Some(objective) = &inspection.objective {
+            println!("objective: {objective}");
+        }
+        if let Some(role) = &inspection.role {
+            println!("role: {role}");
+        }
+        if let Some(host) = &inspection.host {
+            println!("host: {host}");
         }
         if let Some(heartbeat) = &inspection.latest_heartbeat_at {
             println!("heartbeat: {heartbeat}");
@@ -1591,6 +1612,61 @@ async fn run_fleet_command(workspace: &Path, args: FleetArgs) -> Result<()> {
         if let Some(error) = &inspection.last_error {
             println!("last_error: {error}");
         }
+        if let Some(alert) = &inspection.alert_state {
+            println!("alert: {alert}");
+        }
+    }
+
+    fn print_artifacts(inspection: &FleetWorkerInspection) {
+        if inspection.artifacts.is_empty() {
+            println!("artifacts: none");
+            return;
+        }
+        println!("artifacts:");
+        for artifact in &inspection.artifacts {
+            let size = artifact
+                .size_bytes
+                .map(|size| format!(" size={size}"))
+                .unwrap_or_default();
+            let mime = artifact
+                .mime_type
+                .as_ref()
+                .map(|mime| format!(" mime={mime}"))
+                .unwrap_or_default();
+            println!(
+                "  {} {}{}{}",
+                artifact_kind_label(&artifact.kind),
+                artifact.path.display(),
+                size,
+                mime
+            );
+        }
+    }
+
+    fn print_logs(workspace: &Path, inspection: &FleetWorkerInspection) -> Result<()> {
+        let mut printed = false;
+        for artifact in inspection
+            .artifacts
+            .iter()
+            .filter(|artifact| matches!(artifact.kind, FleetArtifactKind::Log))
+        {
+            let path = workspace.join(&artifact.path);
+            println!("== {} ==", artifact.path.display());
+            let contents = std::fs::read_to_string(&path)
+                .with_context(|| format!("reading fleet log {}", path.display()))?;
+            let preview: String = contents.chars().take(16 * 1024).collect();
+            print!("{preview}");
+            if contents.chars().count() > preview.chars().count() {
+                println!("\n[truncated]");
+            } else if !preview.ends_with('\n') {
+                println!();
+            }
+            printed = true;
+        }
+        if !printed {
+            println!("logs: none");
+        }
+        Ok(())
     }
 
     fn alert_event_class(arg: FleetAlertEventArg) -> FleetAlertEventClass {
@@ -1678,6 +1754,15 @@ async fn run_fleet_command(workspace: &Path, args: FleetArgs) -> Result<()> {
         }
         FleetCommand::Inspect { worker_id } => {
             print_inspection(&manager.inspect_worker(&worker_id)?);
+            Ok(())
+        }
+        FleetCommand::Logs { worker_id } => {
+            let inspection = manager.inspect_worker(&worker_id)?;
+            print_logs(workspace, &inspection)
+        }
+        FleetCommand::Artifacts { worker_id } => {
+            let inspection = manager.inspect_worker(&worker_id)?;
+            print_artifacts(&inspection);
             Ok(())
         }
         FleetCommand::Interrupt { worker_id } => {

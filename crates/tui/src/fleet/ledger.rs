@@ -89,6 +89,10 @@ pub struct FleetLedgerState {
     pub latest_events: BTreeMap<String, FleetWorkerEvent>,
     /// Artifact events keyed by worker_id:run_id:task_id:path.
     pub artifact_events: BTreeMap<String, FleetWorkerEvent>,
+    /// Restart events keyed by worker_id:run_id:task_id.
+    pub restarted_events: BTreeMap<String, FleetWorkerEvent>,
+    /// Escalation events keyed by worker_id:run_id:task_id.
+    pub escalated_events: BTreeMap<String, FleetWorkerEvent>,
     /// Completed receipts by run_id:task_id.
     pub receipts: BTreeMap<String, FleetReceipt>,
 }
@@ -391,12 +395,20 @@ impl FleetLedger {
                 )?);
             }
         }
+        let mut compacted_events = BTreeMap::new();
         for event in state.latest_events.values() {
-            lines.push(serde_json::to_string(&FleetLedgerRecord::EventAppended {
-                event: event.clone(),
-            })?);
+            compacted_events.insert(compact_event_key(event), event.clone());
         }
         for event in state.artifact_events.values() {
+            compacted_events.insert(compact_event_key(event), event.clone());
+        }
+        for event in state.restarted_events.values() {
+            compacted_events.insert(compact_event_key(event), event.clone());
+        }
+        for event in state.escalated_events.values() {
+            compacted_events.insert(compact_event_key(event), event.clone());
+        }
+        for event in compacted_events.values() {
             lines.push(serde_json::to_string(&FleetLedgerRecord::EventAppended {
                 event: event.clone(),
             })?);
@@ -432,6 +444,13 @@ fn task_key(run_id: &str, task_id: &str) -> String {
 
 fn event_key(worker_id: &str, run_id: &str, task_id: &str) -> String {
     format!("{}:{}:{}", worker_id, run_id, task_id)
+}
+
+fn compact_event_key(event: &FleetWorkerEvent) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        event.worker_id, event.run_id.0, event.task_id, event.seq
+    )
 }
 
 fn mark_task_terminal(
@@ -510,20 +529,32 @@ fn apply_record(state: &mut FleetLedgerState, record: FleetLedgerRecord) {
             mark_task_terminal(state, &run_id, &task_id, &worker_id, &timestamp, status);
         }
         FleetLedgerRecord::EventAppended { event } => {
-            let event_key = event_key(&event.worker_id, &event.run_id.0, &event.task_id);
+            let latest_event_key = event_key(&event.worker_id, &event.run_id.0, &event.task_id);
             if state
                 .latest_seq
-                .get(&event_key)
+                .get(&latest_event_key)
                 .copied()
                 .is_none_or(|seq| event.seq > seq)
             {
-                state.latest_seq.insert(event_key.clone(), event.seq);
-                state.latest_events.insert(event_key, event.clone());
+                state.latest_seq.insert(latest_event_key.clone(), event.seq);
+                state.latest_events.insert(latest_event_key, event.clone());
             }
             if let FleetWorkerEventPayload::Artifact(artifact) = &event.payload {
                 state
                     .artifact_events
                     .insert(artifact_event_key(&event, artifact), event.clone());
+            }
+            if matches!(&event.payload, FleetWorkerEventPayload::Restarted { .. }) {
+                state.restarted_events.insert(
+                    event_key(&event.worker_id, &event.run_id.0, &event.task_id),
+                    event.clone(),
+                );
+            }
+            if matches!(&event.payload, FleetWorkerEventPayload::Escalated { .. }) {
+                state.escalated_events.insert(
+                    event_key(&event.worker_id, &event.run_id.0, &event.task_id),
+                    event.clone(),
+                );
             }
             // Derive worker status from lifecycle events.
             match &event.payload {
