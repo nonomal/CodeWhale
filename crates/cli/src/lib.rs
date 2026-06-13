@@ -845,11 +845,16 @@ fn provider_is_supported_by_tui(provider: ProviderKind) -> bool {
             | ProviderKind::Huggingface
             | ProviderKind::Together
             | ProviderKind::OpenaiCodex
-            | ProviderKind::Anthropic
             | ProviderKind::Zai
             | ProviderKind::Stepfun
             | ProviderKind::Minimax
     )
+    // NOTE: Anthropic is intentionally exec-only in the interactive TUI: it
+    // speaks the native Messages API rather than the OpenAI-compatible shape the
+    // interactive loop expects, so `codewhale --provider anthropic` is rejected
+    // with a hint to use `codewhale exec --provider anthropic`. Zai (GLM/Z.AI),
+    // Stepfun, and Minimax are OpenAI-compatible and supported interactively.
+    // (Re-evaluate if/when the interactive loop gains a native Anthropic client.)
 }
 
 fn supported_tui_providers_csv() -> String {
