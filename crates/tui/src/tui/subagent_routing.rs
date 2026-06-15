@@ -1,10 +1,10 @@
 //! Sub-agent and background-task routing helpers for the TUI loop.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::task_manager::{TaskRecord, TaskStatus, TaskSummary};
 use crate::tools::subagent::{MailboxMessage, SubAgentResult, SubAgentStatus};
-use crate::tui::app::{App, AppMode, TaskPanelEntry};
+use crate::tui::app::{App, AppMode, TaskPanelEntry, TaskPanelEntryKind};
 use crate::tui::history::{HistoryCell, SubAgentCell, summarize_tool_output};
 use crate::tui::pager::PagerView;
 use crate::tui::tool_routing::refreshes_workspace_context_on_completion;
@@ -12,6 +12,9 @@ use crate::tui::widgets::agent_card::{
     AgentLifecycle, DelegateCard, FanoutCard, apply_to_delegate, apply_to_fanout,
 };
 use crate::tui::workspace_context;
+
+const SUBAGENT_TERMINAL_CARD_TTL: Duration = Duration::from_secs(5 * 60);
+const SUBAGENT_TERMINAL_CARD_MAX_RETAINED: usize = 24;
 
 pub(super) fn running_agent_count(app: &App) -> usize {
     let mut ids: std::collections::HashSet<&str> =
@@ -44,6 +47,13 @@ pub(super) fn active_fanout_counts(app: &App) -> Option<(usize, usize)> {
 }
 
 pub(super) fn reconcile_subagent_activity_state(app: &mut App) {
+    reconcile_subagent_activity_state_at(app, Instant::now());
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn reconcile_subagent_activity_state_at(app: &mut App, now: Instant) {
+    reconcile_terminal_subagent_card_retention(app, now);
+
     let running_agents: Vec<(String, String)> = app
         .subagent_cache
         .iter()
@@ -68,6 +78,125 @@ pub(super) fn reconcile_subagent_activity_state(app: &mut App) {
         app.agent_activity_started_at = None;
     } else if app.agent_activity_started_at.is_none() {
         app.agent_activity_started_at = Some(Instant::now());
+    }
+
+    reconcile_cards_with_snapshots(app);
+}
+
+fn reconcile_terminal_subagent_card_retention(app: &mut App, now: Instant) {
+    let current_ids: std::collections::HashSet<String> = app
+        .subagent_cache
+        .iter()
+        .map(|agent| agent.agent_id.clone())
+        .collect();
+    app.subagent_terminal_seen_at
+        .retain(|id, _| current_ids.contains(id));
+
+    for agent in &app.subagent_cache {
+        if matches!(agent.status, SubAgentStatus::Running) {
+            app.subagent_terminal_seen_at.remove(&agent.agent_id);
+        } else {
+            app.subagent_terminal_seen_at
+                .entry(agent.agent_id.clone())
+                .or_insert(now);
+        }
+    }
+
+    app.subagent_cache.retain(|agent| {
+        if matches!(agent.status, SubAgentStatus::Running) {
+            return true;
+        }
+        app.subagent_terminal_seen_at
+            .get(&agent.agent_id)
+            .and_then(|seen_at| now.checked_duration_since(*seen_at))
+            .is_none_or(|age| age <= SUBAGENT_TERMINAL_CARD_TTL)
+    });
+
+    let mut terminal_seen: Vec<(String, Instant)> = app
+        .subagent_cache
+        .iter()
+        .filter(|agent| !matches!(agent.status, SubAgentStatus::Running))
+        .filter_map(|agent| {
+            app.subagent_terminal_seen_at
+                .get(&agent.agent_id)
+                .map(|seen_at| (agent.agent_id.clone(), *seen_at))
+        })
+        .collect();
+    terminal_seen.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let keep_terminal_ids: std::collections::HashSet<String> = terminal_seen
+        .into_iter()
+        .take(SUBAGENT_TERMINAL_CARD_MAX_RETAINED)
+        .map(|(id, _)| id)
+        .collect();
+    app.subagent_cache.retain(|agent| {
+        matches!(agent.status, SubAgentStatus::Running)
+            || keep_terminal_ids.contains(agent.agent_id.as_str())
+    });
+
+    let kept_ids: std::collections::HashSet<String> = app
+        .subagent_cache
+        .iter()
+        .map(|agent| agent.agent_id.clone())
+        .collect();
+    app.subagent_terminal_seen_at
+        .retain(|id, _| kept_ids.contains(id));
+}
+
+/// Sync in-transcript card slots that still render as running against the
+/// canonical manager snapshot statuses. A card can miss its terminal mailbox
+/// envelope (e.g. API-timeout interruption observed only via `AgentList`),
+/// which would otherwise leave the fanout/delegate UI counting the agent as
+/// running indefinitely.
+fn reconcile_cards_with_snapshots(app: &mut App) {
+    let non_running: Vec<(String, AgentLifecycle)> = app
+        .subagent_cache
+        .iter()
+        .filter_map(|agent| {
+            let lifecycle = match &agent.status {
+                SubAgentStatus::Running => return None,
+                SubAgentStatus::Interrupted(_) => AgentLifecycle::Interrupted,
+                SubAgentStatus::Completed => AgentLifecycle::Completed,
+                SubAgentStatus::Failed(_) => AgentLifecycle::Failed,
+                SubAgentStatus::Cancelled => AgentLifecycle::Cancelled,
+            };
+            Some((agent.agent_id.clone(), lifecycle))
+        })
+        .collect();
+    for (agent_id, lifecycle) in non_running {
+        let Some(&idx) = app.subagent_card_index.get(&agent_id) else {
+            continue;
+        };
+        let updated = match app.history.get_mut(idx) {
+            Some(HistoryCell::SubAgent(SubAgentCell::Delegate(card)))
+                if card.agent_id == agent_id
+                    && matches!(
+                        card.status,
+                        AgentLifecycle::Pending | AgentLifecycle::Running
+                    ) =>
+            {
+                card.status = lifecycle;
+                true
+            }
+            Some(HistoryCell::SubAgent(SubAgentCell::Fanout(card))) => {
+                match card.workers.iter_mut().find(|slot| {
+                    slot.agent_id == agent_id
+                        && matches!(
+                            slot.status,
+                            AgentLifecycle::Pending | AgentLifecycle::Running
+                        )
+                }) {
+                    Some(slot) => {
+                        slot.status = lifecycle;
+                        true
+                    }
+                    None => false,
+                }
+            }
+            _ => false,
+        };
+        if updated {
+            app.bump_history_cell(idx);
+        }
     }
 }
 
@@ -204,6 +333,9 @@ pub(super) fn task_summary_to_panel_entry(summary: TaskSummary) -> TaskPanelEntr
         status: task_status_label(summary.status).to_string(),
         prompt_summary: summary.prompt_summary,
         duration_ms: summary.duration_ms,
+        kind: TaskPanelEntryKind::Background,
+        stale: false,
+        elapsed_since_output_ms: None,
     }
 }
 

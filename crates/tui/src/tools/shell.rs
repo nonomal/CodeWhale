@@ -46,6 +46,7 @@ use crate::sandbox::{
     SandboxPolicy as ExecutionSandboxPolicy, // Rename to avoid conflict with spec::SandboxPolicy
     SandboxType,
 };
+use crate::worker_profile::ShellPolicy;
 
 /// Status of a shell process
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -111,6 +112,21 @@ pub struct ShellJobSnapshot {
     pub stderr_len: usize,
     pub stdin_available: bool,
     pub stale: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elapsed_since_output_ms: Option<u64>,
+    pub linked_task_id: Option<String>,
+}
+
+/// Once-only completion event for a tracked background shell job.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ShellCompletionEvent {
+    pub task_id: String,
+    pub command: String,
+    pub status: ShellStatus,
+    pub exit_code: Option<i32>,
+    pub duration_ms: u64,
+    pub stdout_tail: String,
+    pub stderr_tail: String,
     pub linked_task_id: Option<String>,
 }
 
@@ -454,6 +470,7 @@ fn spawn_reader_thread<R: Read + Send + 'static>(
 }
 
 const SYNC_READER_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+const STALE_NO_OUTPUT_AFTER: Duration = Duration::from_secs(60);
 
 fn spawn_sync_reader_thread<R: Read + Send + 'static>(
     mut reader: R,
@@ -480,12 +497,15 @@ pub struct BackgroundShell {
     pub status: ShellStatus,
     pub exit_code: Option<i32>,
     pub started_at: Instant,
+    last_output_at: Instant,
+    last_observed_output_len: usize,
     pub sandbox_type: SandboxType,
     pub linked_task_id: Option<String>,
     stdout_buffer: Arc<Mutex<Vec<u8>>>,
     stderr_buffer: Option<Arc<Mutex<Vec<u8>>>>,
     stdout_cursor: usize,
     stderr_cursor: usize,
+    completion_reported: bool,
     stdin: Option<StdinWriter>,
     child: Option<ShellChild>,
     #[cfg(windows)]
@@ -497,6 +517,7 @@ pub struct BackgroundShell {
 impl BackgroundShell {
     /// Check if the process has completed and update status
     fn poll(&mut self) -> bool {
+        self.refresh_output_activity();
         if self.status != ShellStatus::Running {
             return true;
         }
@@ -523,6 +544,28 @@ impl BackgroundShell {
         } else {
             true
         }
+    }
+
+    fn refresh_output_activity(&mut self) {
+        let observed_len = self.observed_output_len();
+        if observed_len != self.last_observed_output_len {
+            self.last_observed_output_len = observed_len;
+            self.last_output_at = Instant::now();
+        }
+    }
+
+    fn observed_output_len(&self) -> usize {
+        let stdout_len = self
+            .stdout_buffer
+            .lock()
+            .map(|data| data.len())
+            .unwrap_or(0);
+        let stderr_len = self
+            .stderr_buffer
+            .as_ref()
+            .and_then(|buffer| buffer.lock().ok().map(|data| data.len()))
+            .unwrap_or(0);
+        stdout_len.saturating_add(stderr_len)
     }
 
     /// Collect output from the background threads
@@ -609,6 +652,11 @@ impl BackgroundShell {
 
         let stdout_delta_len = stdout_delta.len();
         let stderr_delta_len = stderr_delta.len();
+
+        if stdout_delta_len > 0 || stderr_delta_len > 0 {
+            self.last_output_at = Instant::now();
+            self.last_observed_output_len = stdout_total.saturating_add(stderr_total);
+        }
 
         (
             String::from_utf8_lossy(&stdout_delta).to_string(),
@@ -703,6 +751,11 @@ impl BackgroundShell {
             .as_ref()
             .map(|buf| tail_from_buffer(buf, 1200))
             .unwrap_or((0, String::new()));
+        let elapsed_since_output_ms = (self.status == ShellStatus::Running)
+            .then(|| u64::try_from(self.last_output_at.elapsed().as_millis()).unwrap_or(u64::MAX));
+        let stale = elapsed_since_output_ms.is_some_and(|elapsed| {
+            elapsed >= u64::try_from(STALE_NO_OUTPUT_AFTER.as_millis()).unwrap_or(u64::MAX)
+        });
         ShellJobSnapshot {
             id: self.id.clone(),
             job_id: self.id.clone(),
@@ -716,8 +769,23 @@ impl BackgroundShell {
             stdout_len,
             stderr_len,
             stdin_available: self.stdin.is_some() && self.status == ShellStatus::Running,
-            stale: false,
+            stale,
+            elapsed_since_output_ms,
             linked_task_id: self.linked_task_id.clone(),
+        }
+    }
+
+    fn completion_event(&self) -> ShellCompletionEvent {
+        let snapshot = self.job_snapshot();
+        ShellCompletionEvent {
+            task_id: snapshot.id,
+            command: snapshot.command,
+            status: snapshot.status,
+            exit_code: snapshot.exit_code,
+            duration_ms: snapshot.elapsed_ms,
+            stdout_tail: snapshot.stdout_tail,
+            stderr_tail: snapshot.stderr_tail,
+            linked_task_id: snapshot.linked_task_id,
         }
     }
 
@@ -1412,12 +1480,15 @@ impl ShellManager {
             status: ShellStatus::Running,
             exit_code: None,
             started_at: started,
+            last_output_at: started,
+            last_observed_output_len: 0,
             sandbox_type,
             linked_task_id: None,
             stdout_buffer,
             stderr_buffer,
             stdout_cursor: 0,
             stderr_cursor: 0,
+            completion_reported: false,
             stdin,
             child: Some(child),
             #[cfg(windows)]
@@ -1654,6 +1725,21 @@ impl ShellManager {
         jobs
     }
 
+    /// Drain finished background shell jobs that have not yet been reported to
+    /// the model/runtime transcript.
+    pub fn drain_finished_jobs(&mut self) -> Vec<ShellCompletionEvent> {
+        let mut events = Vec::new();
+        for shell in self.processes.values_mut() {
+            shell.poll();
+            if shell.status != ShellStatus::Running && !shell.completion_reported {
+                shell.completion_reported = true;
+                events.push(shell.completion_event());
+            }
+        }
+        events.sort_by(|a, b| a.task_id.cmp(&b.task_id));
+        events
+    }
+
     /// Remember a restart-stale job so the UI can show it instead of hiding it.
     #[allow(dead_code)]
     pub fn remember_stale_job(
@@ -1680,6 +1766,7 @@ impl ShellManager {
                 stderr_len: 0,
                 stdin_available: false,
                 stale: true,
+                elapsed_since_output_ms: None,
                 linked_task_id,
             },
         );
@@ -1768,7 +1855,9 @@ pub fn new_shared_shell_manager(workspace: PathBuf) -> SharedShellManager {
 
 // === ToolSpec Implementations ===
 
-use crate::command_safety::{SafetyLevel, analyze_command, extract_primary_command};
+use crate::command_safety::{
+    SafetyLevel, analyze_command, extract_primary_command, is_parallel_readonly_command,
+};
 use crate::execpolicy::{ExecPolicyDecision, load_default_policy};
 use crate::features::Feature;
 use crate::tools::cargo_failure_summary::summarize_cargo_failure;
@@ -1913,6 +2002,39 @@ fn shell_network_restricted_hint<'a>(
     }
 }
 
+fn exec_shell_input_is_parallel_readonly(input: &serde_json::Value) -> bool {
+    let Some(command) = input.get("command").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    if ["background", "interactive", "tty", "combined_output"]
+        .iter()
+        .any(|key| input.get(*key).and_then(serde_json::Value::as_bool) == Some(true))
+    {
+        return false;
+    }
+    if ["stdin", "input", "data"]
+        .iter()
+        .any(|key| input.get(*key).is_some())
+    {
+        return false;
+    }
+
+    is_parallel_readonly_command(command)
+}
+
+fn exec_shell_input_starts_detached(input: &serde_json::Value) -> bool {
+    input
+        .get("command")
+        .and_then(serde_json::Value::as_str)
+        .is_some()
+        && input
+            .get("interactive")
+            .and_then(serde_json::Value::as_bool)
+            != Some(true)
+        && (input.get("background").and_then(serde_json::Value::as_bool) == Some(true)
+            || input.get("tty").and_then(serde_json::Value::as_bool) == Some(true))
+}
+
 async fn execute_foreground_via_background(
     context: &ToolContext,
     command: &str,
@@ -2005,7 +2127,7 @@ impl ToolSpec for ExecShellTool {
     }
 
     fn description(&self) -> &'static str {
-        "Execute a shell command in the workspace directory. Foreground mode is for bounded commands; use background=true or task_shell_start for work expected to take >5 seconds, then poll/wait."
+        "Execute a shell command in the workspace directory. Foreground mode is for bounded commands; use background=true or task_shell_start for work expected to take >5 seconds. Background jobs return immediately and notify the transcript on completion."
     }
 
     fn input_schema(&self) -> serde_json::Value {
@@ -2022,7 +2144,7 @@ impl ToolSpec for ExecShellTool {
                 },
                 "background": {
                     "type": "boolean",
-                    "description": "Run in background and return task_id (default: false). Prefer task_shell_start or background=true for commands expected to take >5 seconds, including builds, test suites, servers, CI polling, sleep, or other long-running work; poll with exec_shell_wait or task_shell_wait."
+                    "description": "Run in background and return task_id (default: false). Returns immediately and notifies on completion; prefer this for commands expected to take >5 seconds, including builds, test suites, servers, CI polling, sleep, or other long-running work. Use exec_shell_wait only when you need early output, and set wait=true only at a true dependency."
                 },
                 "interactive": {
                     "type": "boolean",
@@ -2061,12 +2183,45 @@ impl ToolSpec for ExecShellTool {
         ApprovalRequirement::Required
     }
 
+    fn approval_requirement_for(&self, input: &serde_json::Value) -> ApprovalRequirement {
+        if exec_shell_input_is_parallel_readonly(input) {
+            ApprovalRequirement::Auto
+        } else {
+            self.approval_requirement()
+        }
+    }
+
+    fn is_read_only_for(&self, input: &serde_json::Value) -> bool {
+        exec_shell_input_is_parallel_readonly(input)
+    }
+
+    fn supports_parallel_for(&self, input: &serde_json::Value) -> bool {
+        exec_shell_input_is_parallel_readonly(input)
+    }
+
+    fn starts_detached_for(&self, input: &serde_json::Value) -> bool {
+        exec_shell_input_starts_detached(input)
+    }
+
     async fn execute(
         &self,
         input: serde_json::Value,
         context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let command = required_str(&input, "command")?;
+        match context.shell_policy {
+            ShellPolicy::None => {
+                return Ok(ToolResult::error(
+                    "Shell tools are disabled by the active permission profile.",
+                ));
+            }
+            ShellPolicy::ReadOnly if !exec_shell_input_is_parallel_readonly(&input) => {
+                return Ok(ToolResult::error(
+                    "Shell command blocked by read-only shell policy. Use a non-mutating, non-background inspection command, or switch to Agent/YOLO for write-capable shell work.",
+                ));
+            }
+            ShellPolicy::ReadOnly | ShellPolicy::Full => {}
+        }
         let timeout_ms = optional_u64(&input, "timeout_ms", 120_000).min(600_000);
         let background = optional_bool(&input, "background", false);
         let interactive = optional_bool(&input, "interactive", false);
@@ -2360,10 +2515,12 @@ impl ToolSpec for ExecShellTool {
                 } else if result.status == ShellStatus::Running {
                     if backgrounded_foreground {
                         format!(
-                            "Command moved to background: {task_id_str}\n\nPoll with exec_shell_wait or cancel with exec_shell_cancel."
+                            "Command moved to background: {task_id_str}\n\nReturns immediately; you will be notified in the transcript when it finishes. Keep working; call exec_shell_wait only if you need early output, or with wait=true at a true dependency."
                         )
                     } else {
-                        format!("Background task started: {task_id_str}")
+                        format!(
+                            "Background task started: {task_id_str}\n\nReturns immediately; you will be notified in the transcript when it finishes. Keep working; call exec_shell_wait only if you need early output, or with wait=true at a true dependency."
+                        )
                     }
                 } else if result.status == ShellStatus::Killed && was_cancelled {
                     format!(
@@ -2424,6 +2581,10 @@ impl ToolSpec for ExecShellTool {
                     }),
                 });
                 metadata["backgrounded"] = json!(background || backgrounded_foreground);
+                if background || backgrounded_foreground {
+                    metadata["auto_notify_on_completion"] = json!(true);
+                    metadata["background_policy"] = json!("nonblocking");
+                }
                 if result.status == ShellStatus::TimedOut && !background && !interactive {
                     metadata["foreground_timeout_recovery"] = json!({
                         "process_killed": true,
@@ -2798,7 +2959,7 @@ impl ToolSpec for ShellWaitTool {
     }
 
     fn description(&self) -> &'static str {
-        "Wait for a background shell task and return incremental output. Turn cancellation stops waiting but leaves the background task running."
+        "Inspect a background shell task and return incremental output without blocking by default. Set wait=true only for a deliberate dependency barrier. Turn cancellation stops waiting but leaves the background task running."
     }
 
     fn input_schema(&self) -> serde_json::Value {
@@ -2815,7 +2976,8 @@ impl ToolSpec for ShellWaitTool {
                 },
                 "wait": {
                     "type": "boolean",
-                    "description": "Wait for completion before returning (default: true)"
+                    "default": false,
+                    "description": "Snapshot the latest background output and return immediately (default). Background jobs notify the transcript automatically on completion, so normally do not wait. Set wait=true only for a deliberate barrier at a true dependency or final gate."
                 }
             },
             "required": ["task_id"]
@@ -2836,7 +2998,7 @@ impl ToolSpec for ShellWaitTool {
         context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let task_id = required_task_id(&input)?;
-        let wait = optional_bool(&input, "wait", true);
+        let wait = optional_bool(&input, "wait", false);
         let timeout_ms = optional_u64(&input, "timeout_ms", 30_000);
 
         let (delta, wait_canceled) = if wait {

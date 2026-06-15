@@ -5,6 +5,7 @@
 //! policy, and scrubbers for text that looks like a forged tool-call wrapper.
 
 use crate::models::ToolCaller;
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ContentBlockKind {
@@ -32,7 +33,7 @@ pub(super) const STREAM_MAX_CONTENT_BYTES: usize = 10 * 1024 * 1024; // 10 MB
 /// History: this used to be 300s (5 min) which was too aggressive — V4
 /// thinking turns on hard prompts legitimately exceed 5 minutes wall-clock
 /// while still emitting reasoning_content chunks the whole way. Bumped to
-/// 30 min in v0.6.6 to address `TODO_FIXES.md` #1. Codex defaults to a
+/// 30 min in v0.6.6 after long-reasoning turns hit the old cap. Codex defaults to a
 /// per-chunk idle of 300s with no wall-clock cap; we keep both layers but
 /// give the wall-clock a generous window so it never fires in practice.
 pub(super) const STREAM_MAX_DURATION_SECS: u64 = 1800; // 30 minutes (was 300s; #103/#1)
@@ -64,6 +65,42 @@ pub(super) fn should_transparently_retry_stream(
     cancelled: bool,
 ) -> bool {
     !any_content_received && transparent_attempts < MAX_TRANSPARENT_STREAM_RETRIES && !cancelled
+}
+
+/// Budget for re-issuing the whole request after a dead stream. Shared by the
+/// nothing-streamed outer retry (#103 Phase 3) and the sleep-resume retry
+/// (#2990).
+pub(super) const MAX_STREAM_RETRIES: u32 = 3;
+
+/// Wall-clock vs monotonic divergence above which we conclude the host slept
+/// mid-stream (#2990). `Instant` pauses during system sleep (CLOCK_UPTIME_RAW
+/// on macOS, CLOCK_MONOTONIC on Linux) while `SystemTime` keeps advancing, so
+/// a large positive gap can only come from a suspend/resume cycle — ordinary
+/// network flakes never produce one. Windows `Instant` may keep ticking
+/// through sleep, in which case this simply never fires (no behavior change).
+pub(super) const SLEEP_GAP_THRESHOLD: Duration = Duration::from_secs(10);
+
+/// True when the gap between wall-clock and monotonic elapsed time since the
+/// last stream progress says the host was suspended.
+pub(super) fn sleep_gap_detected(monotonic_elapsed: Duration, wallclock_elapsed: Duration) -> bool {
+    wallclock_elapsed.saturating_sub(monotonic_elapsed) > SLEEP_GAP_THRESHOLD
+}
+
+/// Decide whether a failed stream should be silently re-issued because the
+/// host slept mid-turn (#2990).
+///
+/// Unlike the transparent retry (#103), this fires even after content has
+/// streamed: the partial output predates the sleep, the user was not
+/// watching, and re-running the identical request is the correct
+/// user-visible behavior. The double-billing concern that blocks ordinary
+/// post-content retries is accepted here because the alternative is a dead
+/// turn the user must re-prompt (and pay for) anyway.
+pub(super) fn should_resume_after_sleep(
+    sleep_detected: bool,
+    retry_attempts: u32,
+    cancelled: bool,
+) -> bool {
+    sleep_detected && retry_attempts < MAX_STREAM_RETRIES && !cancelled
 }
 
 pub(crate) const TOOL_CALL_START_MARKERS: [&str; 5] = [

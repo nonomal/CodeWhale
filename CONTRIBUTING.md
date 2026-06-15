@@ -221,8 +221,9 @@ CodeWhale is allowed to help improve CodeWhale, but the contribution still has
 to be shaped for human review. The recommended workflow is the
 [recursive self-improvement prompt](docs/RECURSIVE_SELF_IMPROVEMENT.md): run it
 from a fresh fork or branch, let the agent find exactly one small friction point,
-and stop after one patch. DeepSeek V4 Pro is the first-class path for this loop
-today, but the review shape matters more than the provider.
+and stop after one patch. DeepSeek V4 Pro is the reference path for this loop
+today, but any configured provider works — the review shape matters more than
+the provider.
 
 Agents and maintainers should follow the stewardship posture in
 [docs/AGENT_ETHOS.md](docs/AGENT_ETHOS.md): use automation for evidence,

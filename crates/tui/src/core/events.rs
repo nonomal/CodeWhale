@@ -10,6 +10,7 @@ use serde_json::Value;
 use crate::core::coherence::CoherenceState;
 use crate::error_taxonomy::ErrorEnvelope;
 use crate::models::{Message, SystemPrompt, Tool, Usage};
+use crate::tools::goal::GoalSnapshot;
 use crate::tools::spec::{ToolError, ToolResult};
 use crate::tools::subagent::SubAgentResult;
 use crate::tools::user_input::UserInputRequest;
@@ -73,7 +74,6 @@ pub enum Event {
     },
 
     /// Tool execution progress (for long-running tools)
-    #[allow(dead_code)]
     ToolCallProgress { id: String, output: String },
 
     /// Tool call completed
@@ -97,6 +97,10 @@ pub enum Event {
         /// API base URL used by this turn's client.
         base_url: Option<String>,
     },
+
+    /// Runtime goal state changed inside the engine, usually from model-visible
+    /// `create_goal` or `update_goal` tool calls.
+    GoalUpdated { snapshot: GoalSnapshot },
 
     /// Context compaction started.
     CompactionStarted {

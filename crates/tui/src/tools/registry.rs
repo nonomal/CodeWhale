@@ -916,7 +916,16 @@ impl ToolRegistryBuilder {
     /// when `tool_setup.rs` conditionally registers them on top of
     /// `with_agent_tools`.
     #[must_use]
+    #[allow(dead_code)] // legacy allow_shell convenience wrapper; used by tests, prod uses with_agent_tools_policy
     pub fn with_agent_tools(self, allow_shell: bool) -> Self {
+        self.with_agent_tools_policy(crate::worker_profile::ShellPolicy::from_legacy_allow_shell(
+            allow_shell,
+        ))
+    }
+
+    /// Include all agent tools under a typed shell policy.
+    #[must_use]
+    pub fn with_agent_tools_policy(self, shell_policy: crate::worker_profile::ShellPolicy) -> Self {
         let builder = self
             .with_file_tools()
             .with_note_tool()
@@ -938,7 +947,7 @@ impl ToolRegistryBuilder {
             .with_image_ocr_tools()
             .with_finance_tool();
 
-        if allow_shell {
+        if shell_policy.allows_shell() {
             builder.with_shell_tools().with_runtime_task_shell_tools()
         } else {
             builder
@@ -967,9 +976,33 @@ impl ToolRegistryBuilder {
         todo_list: super::todo::SharedTodoList,
         plan_state: super::plan::SharedPlanState,
     ) -> Self {
+        self.with_full_agent_surface_policy(
+            client,
+            model,
+            manager,
+            runtime,
+            crate::worker_profile::ShellPolicy::from_legacy_allow_shell(allow_shell),
+            todo_list,
+            plan_state,
+        )
+    }
+
+    /// Include the full agent surface under a typed shell policy.
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_full_agent_surface_policy(
+        self,
+        client: Option<DeepSeekClient>,
+        model: String,
+        manager: super::subagent::SharedSubAgentManager,
+        runtime: super::subagent::SubAgentRuntime,
+        shell_policy: crate::worker_profile::ShellPolicy,
+        todo_list: super::todo::SharedTodoList,
+        plan_state: super::plan::SharedPlanState,
+    ) -> Self {
         let speech_client = client.clone();
         let speech_output_dir = runtime.speech_output_dir.clone();
-        self.with_agent_tools(allow_shell)
+        self.with_agent_tools_policy(shell_policy)
             .with_todo_tool(todo_list)
             .with_plan_tool(plan_state)
             .with_review_tool(client.clone(), model.clone())
@@ -1648,6 +1681,23 @@ mod tests {
             !registry.contains("task_shell_wait"),
             "task_shell_wait should be excluded when allow_shell is false"
         );
+    }
+
+    #[test]
+    fn agent_tools_with_shell_policy_readonly_includes_shell_tools() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let registry = ToolRegistryBuilder::new()
+            .with_agent_tools_policy(crate::worker_profile::ShellPolicy::ReadOnly)
+            .build(ctx);
+
+        assert!(
+            registry.contains("exec_shell"),
+            "read-only shell policy should expose shell tools; execution enforces mutating-command denial"
+        );
+        assert!(registry.contains("task_shell_start"));
+        assert!(registry.contains("task_shell_wait"));
     }
 
     #[test]

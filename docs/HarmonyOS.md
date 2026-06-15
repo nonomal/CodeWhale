@@ -46,28 +46,28 @@ CMake toolchain variables for `aarch64-unknown-linux-ohos`.
 
 ## Compiler Wrappers
 
-For ad-hoc compiler calls, use the root wrappers. They read the same
+For ad-hoc compiler calls, use the wrappers in `scripts/ohos/`. They read the same
 `OHOS_NATIVE_SDK` variable and do not contain local paths.
 
 Windows PowerShell:
 
 ```powershell
-.\ohos-clang.ps1 --version
-.\ohos-clangxx.ps1 --version
+.\scripts\ohos\ohos-clang.ps1 --version
+.\scripts\ohos\ohos-clangxx.ps1 --version
 ```
 
 Linux or macOS:
 
 ```bash
-sh ./ohos-clang.sh --version
-sh ./ohos-clangxx.sh --version
+sh ./scripts/ohos/ohos-clang.sh --version
+sh ./scripts/ohos/ohos-clangxx.sh --version
 ```
 
-If you want to run the POSIX wrappers directly as `./ohos-clang.sh`, make them
+If you want to run the POSIX wrappers directly as `./scripts/ohos/ohos-clang.sh`, make them
 executable first:
 
 ```bash
-chmod +x ./ohos-clang.sh ./ohos-clangxx.sh
+chmod +x ./scripts/ohos/ohos-clang.sh ./scripts/ohos/ohos-clangxx.sh
 ```
 
 ## Cargo Config

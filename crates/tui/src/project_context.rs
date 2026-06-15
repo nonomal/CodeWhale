@@ -54,7 +54,8 @@ const SUPPORTED_CONSTITUTION_SCHEMA: u32 = 1;
 
 /// User-level project instructions loaded as a fallback when the workspace and
 /// its parents do not define project context. Any global AGENTS.md takes
-/// priority over any deprecated global WHALE.md; within each file name,
+/// priority over a global instructions.md (#3012), which takes priority over
+/// any deprecated global WHALE.md; within each file name,
 /// `.codewhale/` takes priority over vendor-neutral `.agents/`, which takes
 /// priority over legacy `.deepseek/`.
 const GLOBAL_AGENTS_RELATIVE_PATH: &[&str] = &[".codewhale", "AGENTS.md"];
@@ -63,6 +64,12 @@ const GLOBAL_AGENTS_LEGACY_PATH: &[&str] = &[".deepseek", "AGENTS.md"];
 const GLOBAL_WHALE_RELATIVE_PATH: &[&str] = &[".codewhale", "WHALE.md"];
 const GLOBAL_WHALE_VENDOR_NEUTRAL_PATH: &[&str] = &[".agents", "WHALE.md"];
 const GLOBAL_WHALE_LEGACY_PATH: &[&str] = &[".deepseek", "WHALE.md"];
+/// Global `instructions.md` (#3012): auto-loaded as a fallback context layer,
+/// ranked between AGENTS.md (higher priority) and the deprecated WHALE.md
+/// (lower), mirroring the project-level precedence.
+const GLOBAL_INSTRUCTIONS_RELATIVE_PATH: &[&str] = &[".codewhale", "instructions.md"];
+const GLOBAL_INSTRUCTIONS_VENDOR_NEUTRAL_PATH: &[&str] = &[".agents", "instructions.md"];
+const GLOBAL_INSTRUCTIONS_LEGACY_PATH: &[&str] = &[".deepseek", "instructions.md"];
 
 /// Maximum size for project context files (to prevent loading huge files)
 const MAX_CONTEXT_SIZE: usize = 100 * 1024; // 100KB
@@ -740,22 +747,14 @@ fn load_project_context_with_parents_and_home(
         }
     }
 
-    // Auto-generate .codewhale/instructions.md when no context file exists anywhere.
-    // This avoids the per-turn filesystem scan fallback in prompts.rs that
-    // breaks KV prefix cache stability.
+    // Generate a bounded in-memory fallback when no context file exists
+    // anywhere. This keeps prompt shape stable without creating project-local
+    // `.codewhale/` files merely because CodeWhale was opened in a directory.
     if !ctx.has_instructions()
-        && let Some(generated) = auto_generate_context(workspace)
+        && let Some(generated) = generate_ephemeral_context(workspace)
     {
-        let mut warnings = std::mem::take(&mut ctx.warnings);
-        ctx = load_project_context(workspace);
-        warnings.extend(ctx.warnings.iter().cloned());
-        ctx.warnings = warnings;
-        if !ctx.has_instructions() {
-            // Loaded from the file we just wrote — use the generated content
-            // directly as a last resort (shouldn't normally happen).
-            ctx.instructions = Some(generated);
-            ctx.source_path = None;
-        }
+        ctx.instructions = Some(generated);
+        ctx.source_path = None;
     }
 
     // Load the CodeWhale-specific repo authority policy
@@ -830,11 +829,14 @@ fn repo_constitution_candidate_paths(workspace: &Path) -> Vec<PathBuf> {
     paths
 }
 
-fn global_context_relative_paths() -> [&'static [&'static str]; 6] {
+fn global_context_relative_paths() -> [&'static [&'static str]; 9] {
     [
         GLOBAL_AGENTS_RELATIVE_PATH,
         GLOBAL_AGENTS_VENDOR_NEUTRAL_PATH,
         GLOBAL_AGENTS_LEGACY_PATH,
+        GLOBAL_INSTRUCTIONS_RELATIVE_PATH,
+        GLOBAL_INSTRUCTIONS_VENDOR_NEUTRAL_PATH,
+        GLOBAL_INSTRUCTIONS_LEGACY_PATH,
         GLOBAL_WHALE_RELATIVE_PATH,
         GLOBAL_WHALE_VENDOR_NEUTRAL_PATH,
         GLOBAL_WHALE_LEGACY_PATH,
@@ -880,13 +882,17 @@ fn merge_global_and_project_instructions(
 fn load_global_agents_context(workspace: &Path, home_dir: Option<&Path>) -> Option<ProjectContext> {
     let home = home_dir?;
 
-    // Priority order (AGENTS.md preferred over the now-deprecated WHALE.md):
-    // 1. ~/.codewhale/AGENTS.md     (canonical)
-    // 2. ~/.agents/AGENTS.md        (vendor-neutral fallback)
-    // 3. ~/.deepseek/AGENTS.md      (legacy fallback)
-    // 4. ~/.codewhale/WHALE.md      (deprecated, legacy fallback)
-    // 5. ~/.agents/WHALE.md         (deprecated, vendor-neutral legacy)
-    // 6. ~/.deepseek/WHALE.md       (deprecated, legacy)
+    // Priority order (AGENTS.md preferred; instructions.md next, #3012;
+    // WHALE.md deprecated and last):
+    // 1. ~/.codewhale/AGENTS.md       (canonical)
+    // 2. ~/.agents/AGENTS.md          (vendor-neutral fallback)
+    // 3. ~/.deepseek/AGENTS.md        (legacy fallback)
+    // 4. ~/.codewhale/instructions.md (canonical)
+    // 5. ~/.agents/instructions.md    (vendor-neutral fallback)
+    // 6. ~/.deepseek/instructions.md  (legacy fallback)
+    // 7. ~/.codewhale/WHALE.md        (deprecated, legacy fallback)
+    // 8. ~/.agents/WHALE.md           (deprecated, vendor-neutral legacy)
+    // 9. ~/.deepseek/WHALE.md         (deprecated, legacy)
     let mut warnings = Vec::new();
 
     for candidate in global_context_relative_paths() {
@@ -920,44 +926,17 @@ fn load_global_agents_context(workspace: &Path, home_dir: Option<&Path>) -> Opti
     None
 }
 
-/// Generate a context file from project tree + summary and write it to
-/// `.codewhale/instructions.md` (or `.deepseek/instructions.md` as legacy
-/// fallback). Returns the generated content on success.
-fn auto_generate_context(workspace: &Path) -> Option<String> {
-    let codewhale_dir = workspace.join(".codewhale");
-    let instructions_path = codewhale_dir.join("instructions.md");
-    let legacy_instructions_path = workspace.join(".deepseek/instructions.md");
-
-    // Don't overwrite an existing file (check both locations)
-    if instructions_path.exists() || legacy_instructions_path.exists() {
-        return None;
-    }
-
+/// Generate ephemeral context from the project tree. Returns the generated
+/// content on success without writing workspace files.
+fn generate_ephemeral_context(workspace: &Path) -> Option<String> {
     let overview = generate_bounded_project_overview(workspace)?;
 
-    let content = format!(
-        "# Project Context (Auto-generated)\n\n\
-         > This file was automatically generated by CodeWhale.\n\
-         > You can edit or delete it at any time.\n\n\
+    Some(format!(
+        "# Project Context (Auto-generated, ephemeral)\n\n\
+         > This context was generated in memory by CodeWhale.\n\
+         > No .codewhale/instructions.md file was written.\n\n\
          {overview}"
-    );
-
-    // Create .codewhale/ directory
-    if let Err(e) = std::fs::create_dir_all(&codewhale_dir) {
-        tracing::warn!("Failed to create .codewhale/ directory: {e}");
-        return None;
-    }
-
-    match std::fs::write(&instructions_path, &content) {
-        Ok(()) => {
-            tracing::info!("Auto-generated {}", instructions_path.display());
-            Some(content)
-        }
-        Err(e) => {
-            tracing::warn!("Failed to write {}: {e}", instructions_path.display());
-            None
-        }
-    }
+    ))
 }
 
 /// Load a context file with size checking
@@ -1488,7 +1467,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_generated_context_is_bounded_for_many_file_workspace() {
+    fn generated_context_is_bounded_and_ephemeral_for_many_file_workspace() {
         let workspace = tempdir().expect("workspace tempdir");
         let home = tempdir().expect("home tempdir");
         let noisy = workspace.path().join("aaa-many-files");
@@ -1513,9 +1492,17 @@ mod tests {
         assert!(ctx.has_instructions());
 
         let generated_path = workspace.path().join(".codewhale").join("instructions.md");
-        assert_eq!(ctx.source_path.as_deref(), Some(generated_path.as_path()));
-        let generated = fs::read_to_string(&generated_path).expect("read generated");
-        assert!(generated.contains("Project Context (Auto-generated)"));
+        assert_eq!(ctx.source_path, None);
+        assert!(
+            !generated_path.exists(),
+            "generated project context should stay ephemeral"
+        );
+        assert!(
+            !workspace.path().join(".codewhale").exists(),
+            "loading context should not create a .codewhale directory"
+        );
+        let generated = ctx.instructions.as_ref().expect("generated instructions");
+        assert!(generated.contains("Project Context (Auto-generated, ephemeral)"));
         assert!(generated.contains("Bounded Project Overview"));
         assert!(!generated.contains("<project_context_pack>"));
         assert!(
@@ -1613,7 +1600,7 @@ mod tests {
     }
 
     #[test]
-    fn cached_context_regenerates_after_auto_generated_context_is_deleted() {
+    fn cached_generated_context_stays_ephemeral() {
         crate::project_context_cache::clear();
         let workspace = tempdir().expect("workspace tempdir");
         let home = tempdir().expect("home tempdir");
@@ -1622,17 +1609,17 @@ mod tests {
             load_project_context_with_parents_cached_and_home(workspace.path(), Some(home.path()));
         assert!(first.has_instructions());
         let generated_path = workspace.path().join(".codewhale").join("instructions.md");
-        assert!(generated_path.is_file(), "expected generated instructions");
-
-        fs::remove_file(&generated_path).expect("remove generated instructions");
-        assert!(!generated_path.exists());
+        assert!(
+            !generated_path.exists(),
+            "first load should not write generated instructions"
+        );
 
         let second =
             load_project_context_with_parents_cached_and_home(workspace.path(), Some(home.path()));
         assert!(second.has_instructions());
         assert!(
-            generated_path.is_file(),
-            "cache hit under the missing-file signature would skip regeneration"
+            !generated_path.exists(),
+            "cached generated context should remain in memory-only state"
         );
     }
 
@@ -1847,6 +1834,74 @@ mod tests {
     }
 
     #[test]
+    fn test_global_instructions_md_is_autoloaded_and_outranks_whale() {
+        // #3012: a global ~/.codewhale/instructions.md should be auto-loaded as
+        // a fallback context layer, ahead of the deprecated WHALE.md.
+        let workspace = tempdir().expect("workspace tempdir");
+        let home = tempdir().expect("home tempdir");
+
+        let codewhale_dir = home.path().join(".codewhale");
+        fs::create_dir(&codewhale_dir).expect("mkdir .codewhale");
+        fs::write(codewhale_dir.join("WHALE.md"), "Global WHALE legacy")
+            .expect("write codewhale whale");
+        let global_instructions = codewhale_dir.join("instructions.md");
+        fs::write(&global_instructions, "Global instructions body")
+            .expect("write global instructions");
+
+        let ctx = load_project_context_with_parents_and_home(workspace.path(), Some(home.path()));
+
+        assert!(ctx.has_instructions());
+        let instructions = ctx.instructions.as_ref().unwrap();
+        assert!(
+            instructions.contains("Global instructions body"),
+            "global instructions.md should be auto-loaded:\n{instructions}"
+        );
+        assert!(
+            !instructions.contains("Global WHALE legacy"),
+            "instructions.md should outrank the deprecated WHALE.md:\n{instructions}"
+        );
+        assert!(
+            !ctx.warnings
+                .iter()
+                .any(|warning| warning.contains("WHALE.md is deprecated")),
+            "loading instructions.md should not emit a WHALE deprecation warning: {:?}",
+            ctx.warnings
+        );
+        assert_eq!(ctx.source_path, Some(global_instructions));
+    }
+
+    #[test]
+    fn test_global_agents_outranks_global_instructions() {
+        // #3012 precedence: AGENTS.md > instructions.md.
+        let workspace = tempdir().expect("workspace tempdir");
+        let home = tempdir().expect("home tempdir");
+
+        let codewhale_dir = home.path().join(".codewhale");
+        fs::create_dir(&codewhale_dir).expect("mkdir .codewhale");
+        let global_agents = codewhale_dir.join("AGENTS.md");
+        fs::write(&global_agents, "Global AGENTS canonical").expect("write global agents");
+        fs::write(
+            codewhale_dir.join("instructions.md"),
+            "Global instructions body",
+        )
+        .expect("write global instructions");
+
+        let ctx = load_project_context_with_parents_and_home(workspace.path(), Some(home.path()));
+
+        assert!(ctx.has_instructions());
+        let instructions = ctx.instructions.as_ref().unwrap();
+        assert!(
+            instructions.contains("Global AGENTS canonical"),
+            "global AGENTS.md should outrank instructions.md:\n{instructions}"
+        );
+        assert!(
+            !instructions.contains("Global instructions body"),
+            "instructions.md should be skipped when a global AGENTS.md exists:\n{instructions}"
+        );
+        assert_eq!(ctx.source_path, Some(global_agents));
+    }
+
+    #[test]
     fn test_local_and_global_agents_merge_when_both_exist() {
         // #1157: when both `~/.deepseek/AGENTS.md` and a project AGENTS.md
         // exist, the prompt should carry user-wide preferences AND the
@@ -1937,7 +1992,7 @@ mod tests {
             ctx.instructions
                 .as_ref()
                 .unwrap()
-                .contains("Project Context (Auto-generated)")
+                .contains("Project Context (Auto-generated, ephemeral)")
         );
     }
 }

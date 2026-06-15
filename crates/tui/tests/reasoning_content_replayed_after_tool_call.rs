@@ -1,5 +1,9 @@
 use futures_util::StreamExt;
 
+#[path = "../src/model_catalog.rs"]
+#[allow(dead_code)]
+mod model_catalog;
+
 #[path = "../src/models.rs"]
 #[allow(dead_code)]
 mod models;
@@ -32,6 +36,7 @@ fn assistant_thinking_tool_call(
         content: vec![
             ContentBlock::Thinking {
                 thinking: thinking.to_string(),
+                signature: None,
             },
             ContentBlock::ToolUse {
                 id: id.to_string(),

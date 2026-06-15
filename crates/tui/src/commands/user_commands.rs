@@ -205,6 +205,9 @@ pub fn try_dispatch_user_command(app: &mut App, input: &str) -> Option<CommandRe
             app.hunt.started_at = None;
             app.hunt.verdict = HuntVerdict::Hunting;
             app.hunt.token_budget = None;
+            app.hunt.tokens_used = 0;
+            app.hunt.time_used_seconds = 0;
+            app.hunt.continuation_count = 0;
             app.active_allowed_tools = None;
             app.pausable = false;
             app.paused = false;
@@ -667,11 +670,17 @@ mod tests {
 
         app.hunt.verdict = crate::tui::app::HuntVerdict::Escaped;
         app.hunt.token_budget = Some(42);
+        app.hunt.tokens_used = 100;
+        app.hunt.time_used_seconds = 5;
+        app.hunt.continuation_count = 1;
         let _ = try_dispatch_user_command(&mut app, "/plain").unwrap();
         assert_eq!(app.hunt.quarry, None);
         assert_eq!(app.hunt.started_at, None);
         assert_eq!(app.hunt.verdict, crate::tui::app::HuntVerdict::Hunting);
         assert_eq!(app.hunt.token_budget, None);
+        assert_eq!(app.hunt.tokens_used, 0);
+        assert_eq!(app.hunt.time_used_seconds, 0);
+        assert_eq!(app.hunt.continuation_count, 0);
         assert_eq!(app.active_allowed_tools, None);
     }
 

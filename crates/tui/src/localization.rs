@@ -246,6 +246,30 @@ pub enum MessageId {
     ConfigFooterDefault,
     ConfigFooterScrollable,
     ConfigFooterFiltered,
+    ConfigSectionProvider,
+    ConfigSectionModel,
+    ConfigSectionPermissions,
+    ConfigSectionNetwork,
+    ConfigSectionDisplay,
+    ConfigSectionComposer,
+    ConfigSectionSidebar,
+    ConfigSectionHistory,
+    ConfigSectionMcp,
+    ConfigSectionFleet,
+    ConfigSectionExperimental,
+    ConfigScopeSession,
+    ConfigScopeSaved,
+    ConfigEditCancelled,
+    ConfigEditTitlePrefix,
+    ConfigEditScopeLabel,
+    ConfigEditCurrentLabel,
+    ConfigEditHintLabel,
+    ConfigEditNewLabel,
+    ConfigEditFooter,
+    ConfigRowEffective,
+    ConfigDefaultValue,
+    ConfigDefaultReasoning,
+    ConfigUnavailable,
     HelpTitle,
     HelpFilterPlaceholder,
     HelpFilterPrefix,
@@ -289,6 +313,14 @@ pub enum MessageId {
     CmdLogoutDescription,
     CmdMcpDescription,
     CmdMemoryDescription,
+    CmdPluginDescription,
+    CmdPluginNoneFound,
+    CmdPluginNotFound,
+    CmdPluginListHeader,
+    CmdPluginDetailDescription,
+    CmdPluginDetailSchema,
+    CmdPluginDetailApproval,
+    CmdPluginDetailPath,
     CmdModeDescription,
     CmdModelDescription,
     CmdModelsDescription,
@@ -537,6 +569,25 @@ pub enum MessageId {
     ApprovalChooseAction,
     ApprovalIntentLabel,
     ApprovalMoreLines,
+    // Sandbox elevation dialog.
+    ElevationTitleSandboxDenied,
+    ElevationTitleRequired,
+    ElevationFieldTool,
+    ElevationFieldCmd,
+    ElevationFieldReason,
+    ElevationImpactHeader,
+    ElevationImpactNetwork,
+    ElevationImpactWrite,
+    ElevationImpactFullAccess,
+    ElevationPromptProceed,
+    ElevationOptionNetwork,
+    ElevationOptionWrite,
+    ElevationOptionFullAccess,
+    ElevationOptionAbort,
+    ElevationOptionNetworkDesc,
+    ElevationOptionWriteDesc,
+    ElevationOptionFullAccessDesc,
+    ElevationOptionAbortDesc,
 
     CtxInspTitle,
     CtxInspSessionContext,
@@ -583,6 +634,35 @@ pub enum MessageId {
     CtxInspChangesByTurn,
     CtxInspStablePrefixOnly,
     CtxInspCacheTip,
+    // Tool family labels (card headers, sidebar, footer).
+    ToolFamilyRead,
+    ToolFamilyPatch,
+    ToolFamilyRun,
+    ToolFamilyFind,
+    ToolFamilyDelegate,
+    ToolFamilyFanout,
+    ToolFamilyRlm,
+    ToolFamilyVerify,
+    ToolFamilyThink,
+    ToolFamilyGeneric,
+    // Voice commands (/voice, /voice-send, /voice-control)
+    CmdVoiceDescription,
+    CmdVoiceSendDescription,
+    CmdVoiceControlDescription,
+    VoiceEnabled,
+    VoiceDisabled,
+    VoiceSendEnabled,
+    VoiceSendDisabled,
+    VoiceControlEnabled,
+    VoiceControlDisabled,
+    VoiceErrNoAuth,
+    VoiceErrNoRecorder,
+    VoiceErrNetwork,
+    VoiceErrEmptySend,
+    VoiceErrTooShort,
+    VoiceRecording,
+    VoiceProcessing,
+    VoiceTranscribed,
 }
 
 #[allow(dead_code)]
@@ -611,6 +691,30 @@ pub const ALL_MESSAGE_IDS: &[MessageId] = &[
     MessageId::ConfigFooterDefault,
     MessageId::ConfigFooterScrollable,
     MessageId::ConfigFooterFiltered,
+    MessageId::ConfigSectionProvider,
+    MessageId::ConfigSectionModel,
+    MessageId::ConfigSectionPermissions,
+    MessageId::ConfigSectionNetwork,
+    MessageId::ConfigSectionDisplay,
+    MessageId::ConfigSectionComposer,
+    MessageId::ConfigSectionSidebar,
+    MessageId::ConfigSectionHistory,
+    MessageId::ConfigSectionMcp,
+    MessageId::ConfigSectionFleet,
+    MessageId::ConfigSectionExperimental,
+    MessageId::ConfigScopeSession,
+    MessageId::ConfigScopeSaved,
+    MessageId::ConfigEditCancelled,
+    MessageId::ConfigEditTitlePrefix,
+    MessageId::ConfigEditScopeLabel,
+    MessageId::ConfigEditCurrentLabel,
+    MessageId::ConfigEditHintLabel,
+    MessageId::ConfigEditNewLabel,
+    MessageId::ConfigEditFooter,
+    MessageId::ConfigRowEffective,
+    MessageId::ConfigDefaultValue,
+    MessageId::ConfigDefaultReasoning,
+    MessageId::ConfigUnavailable,
     MessageId::HelpTitle,
     MessageId::HelpFilterPlaceholder,
     MessageId::HelpFilterPrefix,
@@ -647,6 +751,14 @@ pub const ALL_MESSAGE_IDS: &[MessageId] = &[
     MessageId::CmdLoadDescription,
     MessageId::CmdLogoutDescription,
     MessageId::CmdMcpDescription,
+    MessageId::CmdPluginDescription,
+    MessageId::CmdPluginNoneFound,
+    MessageId::CmdPluginNotFound,
+    MessageId::CmdPluginListHeader,
+    MessageId::CmdPluginDetailDescription,
+    MessageId::CmdPluginDetailSchema,
+    MessageId::CmdPluginDetailApproval,
+    MessageId::CmdPluginDetailPath,
     MessageId::CmdMemoryDescription,
     MessageId::CmdModeDescription,
     MessageId::CmdModelDescription,
@@ -892,6 +1004,24 @@ pub const ALL_MESSAGE_IDS: &[MessageId] = &[
     MessageId::ApprovalChooseAction,
     MessageId::ApprovalIntentLabel,
     MessageId::ApprovalMoreLines,
+    MessageId::ElevationTitleSandboxDenied,
+    MessageId::ElevationTitleRequired,
+    MessageId::ElevationFieldTool,
+    MessageId::ElevationFieldCmd,
+    MessageId::ElevationFieldReason,
+    MessageId::ElevationImpactHeader,
+    MessageId::ElevationImpactNetwork,
+    MessageId::ElevationImpactWrite,
+    MessageId::ElevationImpactFullAccess,
+    MessageId::ElevationPromptProceed,
+    MessageId::ElevationOptionNetwork,
+    MessageId::ElevationOptionWrite,
+    MessageId::ElevationOptionFullAccess,
+    MessageId::ElevationOptionAbort,
+    MessageId::ElevationOptionNetworkDesc,
+    MessageId::ElevationOptionWriteDesc,
+    MessageId::ElevationOptionFullAccessDesc,
+    MessageId::ElevationOptionAbortDesc,
     MessageId::CtxInspTitle,
     MessageId::CtxInspSessionContext,
     MessageId::CtxInspSystemPrompt,
@@ -937,6 +1067,33 @@ pub const ALL_MESSAGE_IDS: &[MessageId] = &[
     MessageId::CtxInspChangesByTurn,
     MessageId::CtxInspStablePrefixOnly,
     MessageId::CtxInspCacheTip,
+    MessageId::ToolFamilyRead,
+    MessageId::ToolFamilyPatch,
+    MessageId::ToolFamilyRun,
+    MessageId::ToolFamilyFind,
+    MessageId::ToolFamilyDelegate,
+    MessageId::ToolFamilyFanout,
+    MessageId::ToolFamilyRlm,
+    MessageId::ToolFamilyVerify,
+    MessageId::ToolFamilyThink,
+    MessageId::ToolFamilyGeneric,
+    MessageId::CmdVoiceDescription,
+    MessageId::CmdVoiceSendDescription,
+    MessageId::CmdVoiceControlDescription,
+    MessageId::VoiceEnabled,
+    MessageId::VoiceDisabled,
+    MessageId::VoiceSendEnabled,
+    MessageId::VoiceSendDisabled,
+    MessageId::VoiceControlEnabled,
+    MessageId::VoiceControlDisabled,
+    MessageId::VoiceErrNoAuth,
+    MessageId::VoiceErrNoRecorder,
+    MessageId::VoiceErrNetwork,
+    MessageId::VoiceErrEmptySend,
+    MessageId::VoiceErrTooShort,
+    MessageId::VoiceRecording,
+    MessageId::VoiceProcessing,
+    MessageId::VoiceTranscribed,
 ];
 
 pub fn tr(locale: Locale, id: MessageId) -> &'static str {
@@ -1151,6 +1308,32 @@ fn english(id: MessageId) -> &'static str {
         MessageId::ConfigFooterFiltered => {
             " type=filter, Backspace=delete, Ctrl+U/Esc=clear, Enter=edit "
         }
+        MessageId::ConfigSectionProvider => "Provider",
+        MessageId::ConfigSectionModel => "Model",
+        MessageId::ConfigSectionPermissions => "Permissions",
+        MessageId::ConfigSectionNetwork => "Network",
+        MessageId::ConfigSectionDisplay => "Display",
+        MessageId::ConfigSectionComposer => "Composer",
+        MessageId::ConfigSectionSidebar => "Sidebar",
+        MessageId::ConfigSectionHistory => "History",
+        MessageId::ConfigSectionMcp => "MCP",
+        MessageId::ConfigSectionFleet => "Fleet",
+        MessageId::ConfigSectionExperimental => "Experimental",
+        MessageId::ConfigScopeSession => "SESSION",
+        MessageId::ConfigScopeSaved => "SAVED",
+        MessageId::ConfigEditCancelled => "Edit cancelled",
+        MessageId::ConfigEditTitlePrefix => "Edit ",
+        MessageId::ConfigEditScopeLabel => "Scope: ",
+        MessageId::ConfigEditCurrentLabel => "Current: ",
+        MessageId::ConfigEditHintLabel => "Hint: ",
+        MessageId::ConfigEditNewLabel => "New: ",
+        MessageId::ConfigEditFooter => {
+            " Enter=apply, Esc=cancel, Ctrl+U=clear, Ctrl+A=all, \u{2190}/\u{2192}=move "
+        }
+        MessageId::ConfigRowEffective => " (effective {currency})",
+        MessageId::ConfigDefaultValue => "(default)",
+        MessageId::ConfigDefaultReasoning => "(config/default)",
+        MessageId::ConfigUnavailable => "(unavailable)",
         MessageId::HelpTitle => "Help",
         MessageId::HelpFilterPlaceholder => "Type to filter",
         MessageId::HelpFilterPrefix => "Filter: ",
@@ -1188,7 +1371,7 @@ fn english(id: MessageId) -> &'static str {
             "Let the agent surgically prune conversation history to free context space"
         }
         MessageId::CmdConfigDescription => "Open interactive configuration editor",
-        MessageId::CmdContextDescription => "Open compact session context inspector",
+        MessageId::CmdContextDescription => "Open context inspector or source-map report",
         MessageId::CmdCostDescription => "Show session cost breakdown",
         MessageId::CmdDiffDescription => "Show file changes since session start",
         MessageId::CmdEditDescription => "Revise and resubmit the last message",
@@ -1206,11 +1389,19 @@ fn english(id: MessageId) -> &'static str {
         MessageId::CmdInitDescription => "Generate AGENTS.md for project",
         MessageId::CmdLspDescription => "Toggle LSP diagnostics on or off",
         MessageId::CmdShareDescription => "Export current session as a shareable web URL",
-        MessageId::CmdJobsDescription => "Inspect and control background commands",
+        MessageId::CmdJobsDescription => "Inspect and control background Bash jobs",
         MessageId::CmdLinksDescription => "Show DeepSeek dashboard and docs links",
         MessageId::CmdLoadDescription => "Load session from file",
         MessageId::CmdLogoutDescription => "Clear API key and return to setup",
         MessageId::CmdMcpDescription => "Open or manage MCP servers",
+        MessageId::CmdPluginDescription => "List discovered plugin tools or show details for one",
+        MessageId::CmdPluginNoneFound => "No plugin tools discovered in {dir}",
+        MessageId::CmdPluginNotFound => "Plugin '{name}' not found",
+        MessageId::CmdPluginListHeader => "Plugin tools ({count}):",
+        MessageId::CmdPluginDetailDescription => "Description: {description}",
+        MessageId::CmdPluginDetailSchema => "Schema:\n{schema}",
+        MessageId::CmdPluginDetailApproval => "Approval: {approval}",
+        MessageId::CmdPluginDetailPath => "Path: {path}",
         MessageId::CmdMemoryDescription => "Inspect or manage the persistent user-memory file",
         MessageId::CmdModeDescription => {
             "Switch mode or open picker: /mode [agent|plan|yolo|1|2|3]"
@@ -1222,11 +1413,11 @@ fn english(id: MessageId) -> &'static str {
         MessageId::CmdThemeDescription => "Switch theme or open the theme picker",
         MessageId::CmdProviderDescription => "Switch the active provider and/or model",
         MessageId::CmdQueueDescription => "View or edit queued messages",
-        MessageId::CmdQueueUsage => "Usage: /queue [list|edit <n>|drop <n>|clear]",
+        MessageId::CmdQueueUsage => "Usage: /queue [list|send <n>|edit <n>|drop <n>|clear]",
         MessageId::CmdQueueDraftHeader => "Editing queued message:",
         MessageId::CmdQueueNoMessages => "No queued messages",
         MessageId::CmdQueueListHeader => "Queued messages ({count}):",
-        MessageId::CmdQueueTip => "Tip: /queue edit <n> to edit, /queue drop <n> to remove",
+        MessageId::CmdQueueTip => "Tip: /queue send <n> to send now, /queue drop <n> to remove",
         MessageId::CmdQueueAlreadyEditing => {
             "Already editing a queued message. Send it or /queue clear to discard."
         }
@@ -1373,7 +1564,7 @@ fn english(id: MessageId) -> &'static str {
         MessageId::KbSendDraft => "Send the current draft",
         MessageId::KbCloseMenu => "Close menu, cancel request, discard draft, or clear input",
         MessageId::KbCancelOrExit => "Cancel request, or exit when idle",
-        MessageId::KbShellControls => "Open shell controls for a running foreground command",
+        MessageId::KbShellControls => "Background the running foreground shell command",
         MessageId::KbExitEmpty => "Exit when input is empty",
         MessageId::KbCommandPalette => "Open the command palette",
         MessageId::KbFuzzyFilePicker => "Open the fuzzy file picker (insert @path on Enter)",
@@ -1391,7 +1582,7 @@ fn english(id: MessageId) -> &'static str {
         MessageId::KbCompleteCycleModes => {
             "Complete /command, queue running-turn follow-up, cycle modes; Shift+Tab cycles reasoning effort"
         }
-        MessageId::KbJumpPlanAgentYolo => "Jump directly to Plan / Agent / YOLO mode",
+        MessageId::KbJumpPlanAgentYolo => "Trigger hotbar slots",
         MessageId::KbAltJumpPlanAgentYolo => "Alternative jump to Plan / Agent / YOLO mode",
         MessageId::KbFocusSidebar => {
             "Focus Work / Tasks / Agents / Context / Auto sidebar; Ctrl+Alt+0 hides it"
@@ -1536,7 +1727,7 @@ fn english(id: MessageId) -> &'static str {
         MessageId::ApprovalRiskDestructive => "DESTRUCTIVE",
         MessageId::ApprovalCategorySafe => "Safe",
         MessageId::ApprovalCategoryFileWrite => "File Write",
-        MessageId::ApprovalCategoryShell => "Shell Command",
+        MessageId::ApprovalCategoryShell => "Bash",
         MessageId::ApprovalCategoryNetwork => "Network",
         MessageId::ApprovalCategoryMcpRead => "MCP Read",
         MessageId::ApprovalCategoryMcpAction => "MCP Action",
@@ -1555,6 +1746,37 @@ fn english(id: MessageId) -> &'static str {
         MessageId::ApprovalChooseAction => "Enter selected option, or press y/a/d directly",
         MessageId::ApprovalIntentLabel => "Intent: ",
         MessageId::ApprovalMoreLines => "  … (+{count} lines)",
+        // Sandbox elevation dialog.
+        MessageId::ElevationTitleSandboxDenied => "  \u{26a0} Sandbox Denied ",
+        MessageId::ElevationTitleRequired => " Sandbox Elevation Required ",
+        MessageId::ElevationFieldTool => "  Tool: ",
+        MessageId::ElevationFieldCmd => "  Cmd:  ",
+        MessageId::ElevationFieldReason => "  Reason: ",
+        MessageId::ElevationImpactHeader => "  Impact if approved:",
+        MessageId::ElevationImpactNetwork => {
+            "    - network retry enables outbound downloads and HTTP requests"
+        }
+        MessageId::ElevationImpactWrite => {
+            "    - write retry expands writable filesystem scope for this tool call"
+        }
+        MessageId::ElevationImpactFullAccess => {
+            "    - full access removes sandbox restrictions entirely for this retry"
+        }
+        MessageId::ElevationPromptProceed => "  Choose how to proceed:",
+        MessageId::ElevationOptionNetwork => "Allow outbound network",
+        MessageId::ElevationOptionWrite => "Allow extra write access",
+        MessageId::ElevationOptionFullAccess => "Full access (filesystem + network)",
+        MessageId::ElevationOptionAbort => "Abort",
+        MessageId::ElevationOptionNetworkDesc => {
+            "Retry this tool call with outbound network access for downloads and HTTP requests"
+        }
+        MessageId::ElevationOptionWriteDesc => {
+            "Retry this tool call with additional writable filesystem scope"
+        }
+        MessageId::ElevationOptionFullAccessDesc => {
+            "Retry without sandbox limits; grants unrestricted filesystem and network access"
+        }
+        MessageId::ElevationOptionAbortDesc => "Cancel this tool execution",
 
         MessageId::CtxInspTitle => "Context inspector",
         MessageId::CtxInspSessionContext => "Session Context",
@@ -1579,7 +1801,9 @@ fn english(id: MessageId) -> &'static str {
         MessageId::CtxInspNoSystemPrompt => "No system prompt set.",
         MessageId::CtxInspNoReferences => "No file, directory, or media references recorded yet.",
         MessageId::CtxInspNoToolActivity => "No tool activity recorded yet.",
-        MessageId::CtxInspAltVHint => "Open the matching card and press Alt+V for full details.",
+        MessageId::CtxInspAltVHint => {
+            "Open the matching card and press Alt+V (or v) for full details."
+        }
         MessageId::CtxInspCells => "cells",
         MessageId::CtxInspApiMessages => "API messages",
         MessageId::CtxInspActive => "active",
@@ -1604,6 +1828,42 @@ fn english(id: MessageId) -> &'static str {
             "Tip: Stable prefix blocks are DeepSeek V4 prefix-cache eligible. \
             Volatile working-set changes break the cache only for the tail."
         }
+        MessageId::ToolFamilyRead => "read",
+        MessageId::ToolFamilyPatch => "patch",
+        MessageId::ToolFamilyRun => "run",
+        MessageId::ToolFamilyFind => "find",
+        MessageId::ToolFamilyDelegate => "delegate",
+        MessageId::ToolFamilyFanout => "fanout",
+        MessageId::ToolFamilyRlm => "rlm",
+        MessageId::ToolFamilyVerify => "verify",
+        MessageId::ToolFamilyThink => "think",
+        MessageId::ToolFamilyGeneric => "tool",
+        // Voice commands
+        MessageId::CmdVoiceDescription => {
+            "Toggle voice input: record speech and transcribe into the composer"
+        }
+        MessageId::CmdVoiceSendDescription => {
+            "Toggle voice auto-send: submit when the transcript ends with \"send it\""
+        }
+        MessageId::CmdVoiceControlDescription => {
+            "Toggle voice control: AI-assisted dictation aware of the composer text"
+        }
+        MessageId::VoiceEnabled => "Voice input enabled. Speak to record.",
+        MessageId::VoiceDisabled => "Voice input disabled.",
+        MessageId::VoiceSendEnabled => "Voice auto-send enabled.",
+        MessageId::VoiceSendDisabled => "Voice auto-send disabled.",
+        MessageId::VoiceControlEnabled => "Voice control enabled.",
+        MessageId::VoiceControlDisabled => "Voice control disabled.",
+        MessageId::VoiceErrNoAuth => "Voice: no API key configured for the active provider",
+        MessageId::VoiceErrNoRecorder => {
+            "Voice: no recording tool found. Install sox, arecord, or rec."
+        }
+        MessageId::VoiceErrNetwork => "Voice: transcription request failed",
+        MessageId::VoiceErrEmptySend => "Voice: nothing to send",
+        MessageId::VoiceErrTooShort => "Voice: no speech detected, recording too short",
+        MessageId::VoiceRecording => "🎙 Recording... speak now",
+        MessageId::VoiceProcessing => "🎙 Transcribing...",
+        MessageId::VoiceTranscribed => "🎙 Transcribed",
     }
 }
 
@@ -1651,6 +1911,32 @@ fn vietnamese(id: MessageId) -> Option<&'static str> {
         MessageId::ConfigFooterFiltered => {
             " gõ=lọc, Backspace=xóa, Ctrl+U/Esc=xóa sạch, Enter=sửa "
         }
+        MessageId::ConfigSectionProvider => "Nhà cung cấp",
+        MessageId::ConfigSectionModel => "Mô hình",
+        MessageId::ConfigSectionPermissions => "Quyền hạn",
+        MessageId::ConfigSectionNetwork => "Mạng",
+        MessageId::ConfigSectionDisplay => "Hiển thị",
+        MessageId::ConfigSectionComposer => "Soạn thảo",
+        MessageId::ConfigSectionSidebar => "Thanh bên",
+        MessageId::ConfigSectionHistory => "Lịch sử",
+        MessageId::ConfigSectionMcp => "MCP",
+        MessageId::ConfigSectionFleet => "Fleet",
+        MessageId::ConfigSectionExperimental => "Thử nghiệm",
+        MessageId::ConfigScopeSession => "PHIÊN",
+        MessageId::ConfigScopeSaved => "ĐÃ LƯU",
+        MessageId::ConfigEditCancelled => "Đã hủy chỉnh sửa",
+        MessageId::ConfigEditTitlePrefix => "Sửa ",
+        MessageId::ConfigEditScopeLabel => "Phạm vi: ",
+        MessageId::ConfigEditCurrentLabel => "Hiện tại: ",
+        MessageId::ConfigEditHintLabel => "Gợi ý: ",
+        MessageId::ConfigEditNewLabel => "Mới: ",
+        MessageId::ConfigEditFooter => {
+            " Enter=áp dụng, Esc=hủy, Ctrl+U=xóa, Ctrl+A=tất cả, \u{2190}/\u{2192}=di chuyển "
+        }
+        MessageId::ConfigRowEffective => " (hiệu lực {currency})",
+        MessageId::ConfigDefaultValue => "(mặc định)",
+        MessageId::ConfigDefaultReasoning => "(cấu hình/mặc định)",
+        MessageId::ConfigUnavailable => "(không khả dụng)",
         MessageId::HelpTitle => "Trợ giúp",
         MessageId::HelpFilterPlaceholder => "Nhập để lọc",
         MessageId::HelpFilterPrefix => "Bộ lọc: ",
@@ -1717,6 +2003,14 @@ fn vietnamese(id: MessageId) -> Option<&'static str> {
         MessageId::CmdLoadDescription => "Tải phiên làm việc từ tệp",
         MessageId::CmdLogoutDescription => "Xóa khóa API và quay lại bước thiết lập",
         MessageId::CmdMcpDescription => "Mở hoặc quản lý các máy chủ MCP",
+        MessageId::CmdPluginDescription => "List discovered plugin tools or show details for one",
+        MessageId::CmdPluginNoneFound => "No plugin tools discovered in {dir}",
+        MessageId::CmdPluginNotFound => "Plugin '{name}' not found",
+        MessageId::CmdPluginListHeader => "Plugin tools ({count}):",
+        MessageId::CmdPluginDetailDescription => "Description: {description}",
+        MessageId::CmdPluginDetailSchema => "Schema:\n{schema}",
+        MessageId::CmdPluginDetailApproval => "Approval: {approval}",
+        MessageId::CmdPluginDetailPath => "Path: {path}",
         MessageId::CmdMemoryDescription => "Kiểm tra hoặc quản lý tệp bộ nhớ người dùng liên tục",
         MessageId::CmdModeDescription => {
             "Chuyển đổi chế độ hoặc mở bảng chọn: /mode [agent|plan|yolo|1|2|3]"
@@ -1732,11 +2026,11 @@ fn vietnamese(id: MessageId) -> Option<&'static str> {
             "Chuyển đổi hoặc xem backend LLM đang hoạt động (deepseek | nvidia-nim | ollama)"
         }
         MessageId::CmdQueueDescription => "Xem hoặc chỉnh sửa các tin nhắn đang chờ xử lý",
-        MessageId::CmdQueueUsage => "Cách dùng: /queue [list|edit <n>|drop <n>|clear]",
+        MessageId::CmdQueueUsage => "Cách dùng: /queue [list|send <n>|edit <n>|drop <n>|clear]",
         MessageId::CmdQueueDraftHeader => "Đang chỉnh sửa tin nhắn đang chờ:",
         MessageId::CmdQueueNoMessages => "Không có tin nhắn đang chờ",
         MessageId::CmdQueueListHeader => "Tin nhắn đang chờ ({count}):",
-        MessageId::CmdQueueTip => "Mẹo: /queue edit <n> để sửa, /queue drop <n> để xóa",
+        MessageId::CmdQueueTip => "Mẹo: /queue send <n> để gửi ngay, /queue drop <n> để xóa",
         MessageId::CmdQueueAlreadyEditing => {
             "Đã đang chỉnh sửa một tin nhắn đang chờ. Hãy gửi nó hoặc dùng /queue clear để hủy."
         }
@@ -1894,7 +2188,7 @@ fn vietnamese(id: MessageId) -> Option<&'static str> {
         MessageId::KbSendDraft => "Gửi bản nháp hiện tại",
         MessageId::KbCloseMenu => "Đóng menu, hủy yêu cầu, hủy bản nháp hoặc xóa sạch đầu vào",
         MessageId::KbCancelOrExit => "Hủy yêu cầu, hoặc thoát khi rảnh",
-        MessageId::KbShellControls => "Mở các điều khiển shell cho một lệnh đang chạy ở tiền cảnh",
+        MessageId::KbShellControls => "Chuyển lệnh shell đang chạy ở tiền cảnh xuống nền",
         MessageId::KbExitEmpty => "Thoát khi khung nhập trống",
         MessageId::KbCommandPalette => "Mở bảng lệnh (command palette)",
         MessageId::KbFuzzyFilePicker => {
@@ -1916,7 +2210,7 @@ fn vietnamese(id: MessageId) -> Option<&'static str> {
         MessageId::KbCompleteCycleModes => {
             "Hoàn thành /command, xếp hàng theo dõi lượt đang chạy, chuyển đổi chế độ; Shift+Tab để chuyển đổi mức độ suy luận"
         }
-        MessageId::KbJumpPlanAgentYolo => "Nhảy trực tiếp sang chế độ Plan / Agent / YOLO",
+        MessageId::KbJumpPlanAgentYolo => "Kích hoạt các ô hotbar",
         MessageId::KbAltJumpPlanAgentYolo => {
             "Phím tắt thay thế để nhảy sang chế độ Plan / Agent / YOLO"
         }
@@ -2071,7 +2365,7 @@ fn vietnamese(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalRiskDestructive => "NGUY HẠI",
         MessageId::ApprovalCategorySafe => "An toàn",
         MessageId::ApprovalCategoryFileWrite => "Ghi Tệp",
-        MessageId::ApprovalCategoryShell => "Lệnh Shell",
+        MessageId::ApprovalCategoryShell => "Bash",
         MessageId::ApprovalCategoryNetwork => "Mạng",
         MessageId::ApprovalCategoryMcpRead => "Đọc MCP",
         MessageId::ApprovalCategoryMcpAction => "Hành động MCP",
@@ -2090,6 +2384,38 @@ fn vietnamese(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalChooseAction => "Enter để chọn, hoặc nhấn y/a/d trực tiếp",
         MessageId::ApprovalIntentLabel => "Ý định: ",
         MessageId::ApprovalMoreLines => "  … (+{count} dòng)",
+        // Sandbox elevation dialog.
+        // Sandbox elevation dialog.
+        MessageId::ElevationTitleSandboxDenied => "  \u{26a0} Sandbox Bị Từ Chối ",
+        MessageId::ElevationTitleRequired => " Yêu Cầu Nâng Cấp Sandbox ",
+        MessageId::ElevationFieldTool => "  Công cụ: ",
+        MessageId::ElevationFieldCmd => "  Lệnh:   ",
+        MessageId::ElevationFieldReason => "  Lý do: ",
+        MessageId::ElevationImpactHeader => "  Tác động nếu được chấp thuận:",
+        MessageId::ElevationImpactNetwork => {
+            "    - thử lại với mạng cho phép tải xuống và yêu cầu HTTP"
+        }
+        MessageId::ElevationImpactWrite => {
+            "    - thử lại với quyền ghi mở rộng phạm vi hệ thống tệp"
+        }
+        MessageId::ElevationImpactFullAccess => {
+            "    - truy cập đầy đủ loại bỏ hoàn toàn hạn chế sandbox"
+        }
+        MessageId::ElevationPromptProceed => "  Chọn cách tiếp tục:",
+        MessageId::ElevationOptionNetwork => "Cho phép mạng ngoài",
+        MessageId::ElevationOptionWrite => "Cho phép quyền ghi bổ sung",
+        MessageId::ElevationOptionFullAccess => "Truy cập đầy đủ (hệ thống tệp + mạng)",
+        MessageId::ElevationOptionAbort => "Hủy bỏ",
+        MessageId::ElevationOptionNetworkDesc => {
+            "Thử lại cuộc gọi công cụ này với quyền truy cập mạng ngoài"
+        }
+        MessageId::ElevationOptionWriteDesc => {
+            "Thử lại cuộc gọi công cụ này với phạm vi hệ thống tệp có thể ghi bổ sung"
+        }
+        MessageId::ElevationOptionFullAccessDesc => {
+            "Thử lại không giới hạn sandbox; cấp quyền truy cập không hạn chế"
+        }
+        MessageId::ElevationOptionAbortDesc => "Hủy thực thi công cụ này",
 
         MessageId::CtxInspTitle => "Trình kiểm tra ngữ cảnh",
         MessageId::CtxInspSessionContext => "Ngữ cảnh phiên",
@@ -2114,7 +2440,7 @@ fn vietnamese(id: MessageId) -> Option<&'static str> {
         MessageId::CtxInspNoSystemPrompt => "Chưa có lời nhắc hệ thống.",
         MessageId::CtxInspNoReferences => "Chưa có tham chiếu tệp, thư mục hoặc phương tiện nào.",
         MessageId::CtxInspNoToolActivity => "Chưa có hoạt động công cụ nào.",
-        MessageId::CtxInspAltVHint => "Mở thẻ phù hợp và nhấn Alt+V để biết chi tiết.",
+        MessageId::CtxInspAltVHint => "Mở thẻ phù hợp và nhấn Alt+V (hoặc v) để biết chi tiết.",
         MessageId::CtxInspCells => "ô",
         MessageId::CtxInspApiMessages => "tin nhắn API",
         MessageId::CtxInspActive => "đang hoạt động",
@@ -2138,12 +2464,56 @@ fn vietnamese(id: MessageId) -> Option<&'static str> {
         MessageId::CtxInspCacheTip => {
             "Gợi ý: Các khối ổn định đủ điều kiện cho bộ nhớ đệm tiền tố DeepSeek V4. Thay đổi vùng làm việc chỉ phá vỡ bộ nhớ đệm ở phần cuối."
         }
+        MessageId::ToolFamilyRead => "đọc",
+        MessageId::ToolFamilyPatch => "vá",
+        MessageId::ToolFamilyRun => "chạy",
+        MessageId::ToolFamilyFind => "tìm",
+        MessageId::ToolFamilyDelegate => "ủy quyền",
+        MessageId::ToolFamilyFanout => "fanout",
+        MessageId::ToolFamilyRlm => "rlm",
+        MessageId::ToolFamilyVerify => "xác minh",
+        MessageId::ToolFamilyThink => "suy nghĩ",
+        MessageId::ToolFamilyGeneric => "công cụ",
+        // Voice commands
+        MessageId::CmdVoiceDescription => {
+            "Bật/tắt nhập liệu bằng giọng nói: ghi âm và chuyển thành văn bản"
+        }
+        MessageId::CmdVoiceSendDescription => {
+            "Bật/tắt tự gửi bằng giọng nói: gửi khi bản ghi kết thúc bằng \"send it\""
+        }
+        MessageId::CmdVoiceControlDescription => {
+            "Bật/tắt điều khiển giọng nói: đọc chính tả có AI hỗ trợ"
+        }
+        MessageId::VoiceEnabled => "Đã bật nhập liệu bằng giọng nói. Hãy nói để ghi âm.",
+        MessageId::VoiceDisabled => "Đã tắt nhập liệu bằng giọng nói.",
+        MessageId::VoiceSendEnabled => "Đã bật tự gửi bằng giọng nói.",
+        MessageId::VoiceSendDisabled => "Đã tắt tự gửi bằng giọng nói.",
+        MessageId::VoiceControlEnabled => "Đã bật điều khiển giọng nói.",
+        MessageId::VoiceControlDisabled => "Đã tắt điều khiển giọng nói.",
+        MessageId::VoiceErrNoAuth => "Giọng nói: nhà cung cấp hiện tại chưa có khóa API",
+        MessageId::VoiceErrNoRecorder => {
+            "Giọng nói: không tìm thấy công cụ ghi âm. Hãy cài sox, arecord hoặc rec."
+        }
+        MessageId::VoiceErrNetwork => "Giọng nói: yêu cầu chuyển giọng nói thất bại",
+        MessageId::VoiceErrEmptySend => "Giọng nói: không có nội dung để gửi",
+        MessageId::VoiceErrTooShort => "Giọng nói: không phát hiện giọng nói, bản ghi quá ngắn",
+        MessageId::VoiceRecording => "🎙 Đang ghi âm... hãy nói",
+        MessageId::VoiceProcessing => "🎙 Đang chuyển thành văn bản...",
+        MessageId::VoiceTranscribed => "🎙 Đã chuyển xong",
     })
 }
 
 fn traditional_chinese(id: MessageId) -> Option<&'static str> {
     Some(match id {
         MessageId::CmdRelayDescription => "為新執行緒建立會話接力摘要",
+        MessageId::CmdPluginDescription => "List discovered plugin tools or show details for one",
+        MessageId::CmdPluginNoneFound => "No plugin tools discovered in {dir}",
+        MessageId::CmdPluginNotFound => "Plugin '{name}' not found",
+        MessageId::CmdPluginListHeader => "Plugin tools ({count}):",
+        MessageId::CmdPluginDetailDescription => "Description: {description}",
+        MessageId::CmdPluginDetailSchema => "Schema:\n{schema}",
+        MessageId::CmdPluginDetailApproval => "Approval: {approval}",
+        MessageId::CmdPluginDetailPath => "Path: {path}",
         MessageId::CmdTranslateDescription => "切換輸出翻譯為目前系統語言的開關狀態",
         MessageId::CmdTranslateOff => "輸出翻譯已關閉（顯示原始模型輸出）",
         MessageId::CmdTranslateOn => "輸出翻譯已開啟：模型回覆將以繁體中文顯示",
@@ -2160,7 +2530,7 @@ fn traditional_chinese(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalRiskDestructive => "破壞性",
         MessageId::ApprovalCategorySafe => "安全",
         MessageId::ApprovalCategoryFileWrite => "檔案寫入",
-        MessageId::ApprovalCategoryShell => "Shell 命令",
+        MessageId::ApprovalCategoryShell => "Bash",
         MessageId::ApprovalCategoryNetwork => "網路",
         MessageId::ApprovalCategoryMcpRead => "MCP 讀取",
         MessageId::ApprovalCategoryMcpAction => "MCP 操作",
@@ -2179,6 +2549,30 @@ fn traditional_chinese(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalChooseAction => "Enter 執行選中項，或直接按 y/a/d",
         MessageId::ApprovalIntentLabel => "意圖：",
         MessageId::ApprovalMoreLines => "  … (還有 {count} 行)",
+        // Sandbox elevation dialog.
+        // Sandbox elevation dialog.
+        MessageId::ElevationTitleSandboxDenied => "  \u{26a0} 沙箱拒絕 ",
+        MessageId::ElevationTitleRequired => " 沙箱提權 ",
+        MessageId::ElevationFieldTool => "  工具：",
+        MessageId::ElevationFieldCmd => "  命令：",
+        MessageId::ElevationFieldReason => "  原因：",
+        MessageId::ElevationImpactHeader => "  批准後的影響：",
+        MessageId::ElevationImpactNetwork => "    - 網路重試允許外部下載和 HTTP 請求",
+        MessageId::ElevationImpactWrite => "    - 寫入重試擴大此工具呼叫的檔案系統寫入範圍",
+        MessageId::ElevationImpactFullAccess => "    - 完全訪問解除沙箱限制",
+        MessageId::ElevationPromptProceed => "  請選擇處理方式：",
+        MessageId::ElevationOptionNetwork => "允許外部網路訪問",
+        MessageId::ElevationOptionWrite => "允許額外寫入權限",
+        MessageId::ElevationOptionFullAccess => "完全訪問（檔案系統 + 網路）",
+        MessageId::ElevationOptionAbort => "中止",
+        MessageId::ElevationOptionNetworkDesc => {
+            "使用外部網路訪問重試此工具呼叫（下載和 HTTP 請求）"
+        }
+        MessageId::ElevationOptionWriteDesc => "重試此工具呼叫，擴大可寫入的檔案系統範圍",
+        MessageId::ElevationOptionFullAccessDesc => {
+            "無沙箱限制重試（授予無限制的檔案系統和網路訪問權限）"
+        }
+        MessageId::ElevationOptionAbortDesc => "取消此工具呼叫",
 
         MessageId::CtxInspTitle => "上下文檢查器",
         MessageId::CtxInspSessionContext => "會話上下文",
@@ -2203,7 +2597,7 @@ fn traditional_chinese(id: MessageId) -> Option<&'static str> {
         MessageId::CtxInspNoSystemPrompt => "未設定系統提示。",
         MessageId::CtxInspNoReferences => "尚未記錄任何檔案、目錄或媒體引用。",
         MessageId::CtxInspNoToolActivity => "尚未記錄任何工具活動。",
-        MessageId::CtxInspAltVHint => "開啟對應的卡片並按 Alt+V 檢視詳細資訊。",
+        MessageId::CtxInspAltVHint => "開啟對應的卡片並按 Alt+V（或 v）檢視詳細資訊。",
         MessageId::CtxInspCells => "儲存格",
         MessageId::CtxInspApiMessages => "API 訊息",
         MessageId::CtxInspActive => "作用中",
@@ -2227,6 +2621,32 @@ fn traditional_chinese(id: MessageId) -> Option<&'static str> {
         MessageId::CtxInspCacheTip => {
             "提示：穩定前綴區塊符合 DeepSeek V4 前綴快取條件。易變工作集的更改僅會破壞快取尾部。"
         }
+        MessageId::ConfigSectionProvider => "提供商",
+        MessageId::ConfigSectionModel => "模型",
+        MessageId::ConfigSectionPermissions => "權限",
+        MessageId::ConfigSectionNetwork => "網路",
+        MessageId::ConfigSectionDisplay => "顯示",
+        MessageId::ConfigSectionComposer => "編輯器",
+        MessageId::ConfigSectionSidebar => "側邊欄",
+        MessageId::ConfigSectionHistory => "歷史",
+        MessageId::ConfigSectionMcp => "MCP",
+        MessageId::ConfigSectionFleet => "艦隊",
+        MessageId::ConfigSectionExperimental => "實驗",
+        MessageId::ConfigScopeSession => "會話",
+        MessageId::ConfigScopeSaved => "已儲存",
+        MessageId::ConfigEditCancelled => "編輯已取消",
+        MessageId::ConfigEditTitlePrefix => "編輯 ",
+        MessageId::ConfigEditScopeLabel => "範圍: ",
+        MessageId::ConfigEditCurrentLabel => "目前: ",
+        MessageId::ConfigEditHintLabel => "提示: ",
+        MessageId::ConfigEditNewLabel => "新值: ",
+        MessageId::ConfigEditFooter => {
+            " Enter=套用, Esc=取消, Ctrl+U=清除, Ctrl+A=全選, \u{2190}/\u{2192}=移動 "
+        }
+        MessageId::ConfigRowEffective => " (實際 {currency})",
+        MessageId::ConfigDefaultValue => "(預設)",
+        MessageId::ConfigDefaultReasoning => "(設定/預設)",
+        MessageId::ConfigUnavailable => "(無法使用)",
         MessageId::StatusPickerTitle => " 狀態列 ",
         MessageId::StatusPickerInstruction => "選擇要在底部顯示的項目:",
         MessageId::StatusPickerActionToggle => "切換 ",
@@ -2234,6 +2654,38 @@ fn traditional_chinese(id: MessageId) -> Option<&'static str> {
         MessageId::StatusPickerActionNone => "無 ",
         MessageId::StatusPickerActionSave => "儲存 ",
         MessageId::StatusPickerActionCancel => "取消 ",
+        MessageId::ToolFamilyRead => "讀取",
+        MessageId::ToolFamilyPatch => "修補",
+        MessageId::ToolFamilyRun => "執行",
+        MessageId::ToolFamilyFind => "搜尋",
+        MessageId::ToolFamilyDelegate => "委派",
+        MessageId::ToolFamilyFanout => "扇出",
+        MessageId::ToolFamilyRlm => "rlm",
+        MessageId::ToolFamilyVerify => "驗證",
+        MessageId::ToolFamilyThink => "思考",
+        MessageId::ToolFamilyGeneric => "工具",
+        // Voice commands
+        MessageId::CmdVoiceDescription => "切換語音輸入：錄製語音並轉錄為文字",
+        MessageId::CmdVoiceSendDescription => {
+            "切換語音自動傳送：轉錄以「發送」或「send it」結尾時自動提交"
+        }
+        MessageId::CmdVoiceControlDescription => {
+            "切換語音控制：AI 輔助的語音聽寫（結合當前輸入內容）"
+        }
+        MessageId::VoiceEnabled => "語音輸入已開啟，開始說話即可錄製",
+        MessageId::VoiceDisabled => "語音輸入已關閉",
+        MessageId::VoiceSendEnabled => "語音自動傳送已開啟",
+        MessageId::VoiceSendDisabled => "語音自動傳送已關閉",
+        MessageId::VoiceControlEnabled => "語音控制已開啟",
+        MessageId::VoiceControlDisabled => "語音控制已關閉",
+        MessageId::VoiceErrNoAuth => "語音：目前供應商未設定 API 金鑰",
+        MessageId::VoiceErrNoRecorder => "語音：未找到錄音工具，請安裝 sox、arecord 或 rec",
+        MessageId::VoiceErrNetwork => "語音：轉錄請求失敗",
+        MessageId::VoiceErrEmptySend => "語音：沒有可傳送的內容",
+        MessageId::VoiceErrTooShort => "語音：未偵測到有效語音，錄製時間過短",
+        MessageId::VoiceRecording => "🎙 正在錄音...請說話",
+        MessageId::VoiceProcessing => "🎙 正在轉錄...",
+        MessageId::VoiceTranscribed => "🎙 轉錄完成",
         other => chinese_simplified(other)?,
     })
 }
@@ -2270,6 +2722,32 @@ fn japanese(id: MessageId) -> Option<&'static str> {
         MessageId::ConfigFooterFiltered => {
             " 入力=絞り込み, Backspace=削除, Ctrl+U/Esc=クリア, Enter=編集 "
         }
+        MessageId::ConfigSectionProvider => "プロバイダ",
+        MessageId::ConfigSectionModel => "モデル",
+        MessageId::ConfigSectionPermissions => "権限",
+        MessageId::ConfigSectionNetwork => "ネットワーク",
+        MessageId::ConfigSectionDisplay => "表示",
+        MessageId::ConfigSectionComposer => "コンポーザー",
+        MessageId::ConfigSectionSidebar => "サイドバー",
+        MessageId::ConfigSectionHistory => "履歴",
+        MessageId::ConfigSectionMcp => "MCP",
+        MessageId::ConfigSectionFleet => "Fleet",
+        MessageId::ConfigSectionExperimental => "実験",
+        MessageId::ConfigScopeSession => "セッション",
+        MessageId::ConfigScopeSaved => "保存済み",
+        MessageId::ConfigEditCancelled => "編集をキャンセルしました",
+        MessageId::ConfigEditTitlePrefix => "編集 ",
+        MessageId::ConfigEditScopeLabel => "スコープ: ",
+        MessageId::ConfigEditCurrentLabel => "現在: ",
+        MessageId::ConfigEditHintLabel => "ヒント: ",
+        MessageId::ConfigEditNewLabel => "新規: ",
+        MessageId::ConfigEditFooter => {
+            " Enter=適用, Esc=キャンセル, Ctrl+U=クリア, Ctrl+A=全選択, \u{2190}/\u{2192}=移動 "
+        }
+        MessageId::ConfigRowEffective => " (実効 {currency})",
+        MessageId::ConfigDefaultValue => "(デフォルト)",
+        MessageId::ConfigDefaultReasoning => "(設定/デフォルト)",
+        MessageId::ConfigUnavailable => "(利用不可)",
         MessageId::HelpTitle => "ヘルプ",
         MessageId::HelpFilterPlaceholder => "入力して絞り込み",
         MessageId::HelpFilterPrefix => "絞り込み: ",
@@ -2332,6 +2810,14 @@ fn japanese(id: MessageId) -> Option<&'static str> {
         MessageId::CmdLoadDescription => "ファイルからセッションを読み込み",
         MessageId::CmdLogoutDescription => "API キーを消去してセットアップに戻る",
         MessageId::CmdMcpDescription => "MCP サーバを開く・管理する",
+        MessageId::CmdPluginDescription => "List discovered plugin tools or show details for one",
+        MessageId::CmdPluginNoneFound => "No plugin tools discovered in {dir}",
+        MessageId::CmdPluginNotFound => "Plugin '{name}' not found",
+        MessageId::CmdPluginListHeader => "Plugin tools ({count}):",
+        MessageId::CmdPluginDetailDescription => "Description: {description}",
+        MessageId::CmdPluginDetailSchema => "Schema:\n{schema}",
+        MessageId::CmdPluginDetailApproval => "Approval: {approval}",
+        MessageId::CmdPluginDetailPath => "Path: {path}",
         MessageId::CmdMemoryDescription => "永続ユーザーメモリファイルを確認・管理",
         MessageId::CmdModeDescription => {
             "動作モードを切り替え、または選択画面を開く: /mode [agent|plan|yolo|1|2|3]"
@@ -2347,11 +2833,11 @@ fn japanese(id: MessageId) -> Option<&'static str> {
             "現在の LLM バックエンドを切り替え・確認（deepseek | nvidia-nim | ollama）"
         }
         MessageId::CmdQueueDescription => "キューされたメッセージを確認・編集",
-        MessageId::CmdQueueUsage => "使用方法: /queue [list|edit <n>|drop <n>|clear]",
+        MessageId::CmdQueueUsage => "使用方法: /queue [list|send <n>|edit <n>|drop <n>|clear]",
         MessageId::CmdQueueDraftHeader => "キューされたメッセージを編集中:",
         MessageId::CmdQueueNoMessages => "キューされたメッセージはありません",
         MessageId::CmdQueueListHeader => "キューされたメッセージ ({count}):",
-        MessageId::CmdQueueTip => "ヒント: /queue edit <n> で編集、/queue drop <n> で削除",
+        MessageId::CmdQueueTip => "ヒント: /queue send <n> で今すぐ送信、/queue drop <n> で削除",
         MessageId::CmdQueueAlreadyEditing => {
             "すでにキューされたメッセージを編集中です。送信するか /queue clear で破棄してください。"
         }
@@ -2495,7 +2981,7 @@ fn japanese(id: MessageId) -> Option<&'static str> {
             "メニューを閉じる、リクエストをキャンセル、下書きを破棄、または入力をクリア"
         }
         MessageId::KbCancelOrExit => "リクエストをキャンセル、またはアイドル時に終了",
-        MessageId::KbShellControls => "実行中のフォアグラウンドコマンドのシェル制御を開く",
+        MessageId::KbShellControls => "実行中のフォアグラウンドコマンドをバックグラウンドへ移す",
         MessageId::KbExitEmpty => "入力が空の時に終了",
         MessageId::KbCommandPalette => "コマンドパレットを開く",
         MessageId::KbFuzzyFilePicker => "ファジーファイルピッカーを開く（Enter で @path を挿入）",
@@ -2513,7 +2999,7 @@ fn japanese(id: MessageId) -> Option<&'static str> {
         MessageId::KbCompleteCycleModes => {
             "/command を補完、実行中ターンのフォローアップをキュー、モードを切り替え；Shift+Tab で推論強度を切り替え"
         }
-        MessageId::KbJumpPlanAgentYolo => "Plan / Agent / YOLO モードに直接ジャンプ",
+        MessageId::KbJumpPlanAgentYolo => "ホットバースロットを起動",
         MessageId::KbAltJumpPlanAgentYolo => "Plan / Agent / YOLO モードへの代替ジャンプ",
         MessageId::KbFocusSidebar => {
             "Work / Tasks / Agents / Context / Auto / Hidden サイドバーにフォーカス"
@@ -2660,7 +3146,7 @@ fn japanese(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalRiskDestructive => "破壊的操作",
         MessageId::ApprovalCategorySafe => "安全",
         MessageId::ApprovalCategoryFileWrite => "ファイル書き込み",
-        MessageId::ApprovalCategoryShell => "シェルコマンド",
+        MessageId::ApprovalCategoryShell => "Bash",
         MessageId::ApprovalCategoryNetwork => "ネットワーク",
         MessageId::ApprovalCategoryMcpRead => "MCP読み取り",
         MessageId::ApprovalCategoryMcpAction => "MCPアクション",
@@ -2679,6 +3165,36 @@ fn japanese(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalChooseAction => "Enterで選択、または y/a/d を直接入力",
         MessageId::ApprovalIntentLabel => "意図：",
         MessageId::ApprovalMoreLines => "  … (+{count} 行)",
+        // Sandbox elevation dialog.
+        // Sandbox elevation dialog.
+        MessageId::ElevationTitleSandboxDenied => "  \u{26a0} サンドボックス拒否 ",
+        MessageId::ElevationTitleRequired => " サンドボックス昇格 ",
+        MessageId::ElevationFieldTool => "  ツール：",
+        MessageId::ElevationFieldCmd => "  コマンド：",
+        MessageId::ElevationFieldReason => "  理由：",
+        MessageId::ElevationImpactHeader => "  承認された場合の影響：",
+        MessageId::ElevationImpactNetwork => {
+            "    - ネットワーク再試行で外部ダウンロードとHTTPリクエストが可能"
+        }
+        MessageId::ElevationImpactWrite => {
+            "    - 書き込み再試行でファイルシステムの書き込み範囲が拡大"
+        }
+        MessageId::ElevationImpactFullAccess => {
+            "    - フルアクセスでサンドボックス制限を完全に解除"
+        }
+        MessageId::ElevationPromptProceed => "  方法を選択：",
+        MessageId::ElevationOptionNetwork => "外部ネットワークを許可",
+        MessageId::ElevationOptionWrite => "追加の書き込みアクセスを許可",
+        MessageId::ElevationOptionFullAccess => "フルアクセス（ファイルシステム + ネットワーク）",
+        MessageId::ElevationOptionAbort => "中止",
+        MessageId::ElevationOptionNetworkDesc => {
+            "外部ネットワークアクセスでこのツール呼び出しを再試行（ダウンロードとHTTPリクエスト用）"
+        }
+        MessageId::ElevationOptionWriteDesc => "追加の書き込み可能ファイルシステム範囲で再試行",
+        MessageId::ElevationOptionFullAccessDesc => {
+            "サンドボックス制限なしで再試行（ファイルシステムとネットワークへの無制限アクセス）"
+        }
+        MessageId::ElevationOptionAbortDesc => "このツール実行をキャンセル",
 
         MessageId::CtxInspTitle => "コンテキストインスペクタ",
         MessageId::CtxInspSessionContext => "セッションコンテキスト",
@@ -2705,7 +3221,9 @@ fn japanese(id: MessageId) -> Option<&'static str> {
             "ファイル、ディレクトリ、メディアの参照はまだ記録されていません。"
         }
         MessageId::CtxInspNoToolActivity => "ツールアクティビティはまだ記録されていません。",
-        MessageId::CtxInspAltVHint => "該当するカードを開き、Alt+V を押すと詳細が表示されます。",
+        MessageId::CtxInspAltVHint => {
+            "該当するカードを開き、Alt+V（または v）を押すと詳細が表示されます。"
+        }
         MessageId::CtxInspCells => "セル",
         MessageId::CtxInspApiMessages => "API メッセージ",
         MessageId::CtxInspActive => "アクティブ",
@@ -2729,6 +3247,42 @@ fn japanese(id: MessageId) -> Option<&'static str> {
         MessageId::CtxInspCacheTip => {
             "ヒント：安定プレフィックスブロックはDeepSeek V4プレフィックスキャッシュの対象です。揮発性ワーキングセットの変更は末尾のキャッシュのみを破壊します。"
         }
+        MessageId::ToolFamilyRead => "読込",
+        MessageId::ToolFamilyPatch => "パッチ",
+        MessageId::ToolFamilyRun => "実行",
+        MessageId::ToolFamilyFind => "検索",
+        MessageId::ToolFamilyDelegate => "委任",
+        MessageId::ToolFamilyFanout => "ファンアウト",
+        MessageId::ToolFamilyRlm => "rlm",
+        MessageId::ToolFamilyVerify => "検証",
+        MessageId::ToolFamilyThink => "思考",
+        MessageId::ToolFamilyGeneric => "ツール",
+        // Voice commands
+        MessageId::CmdVoiceDescription => "音声入力の切替：音声を録音してテキストに変換",
+        MessageId::CmdVoiceSendDescription => {
+            "音声自動送信の切替：転写が「send it」で終わると自動送信"
+        }
+        MessageId::CmdVoiceControlDescription => {
+            "音声コントロールの切替：入力欄を考慮した AI 音声ディクテーション"
+        }
+        MessageId::VoiceEnabled => "音声入力を有効にしました。話すと録音されます。",
+        MessageId::VoiceDisabled => "音声入力を無効にしました。",
+        MessageId::VoiceSendEnabled => "音声自動送信を有効にしました。",
+        MessageId::VoiceSendDisabled => "音声自動送信を無効にしました。",
+        MessageId::VoiceControlEnabled => "音声コントロールを有効にしました。",
+        MessageId::VoiceControlDisabled => "音声コントロールを無効にしました。",
+        MessageId::VoiceErrNoAuth => {
+            "音声：アクティブなプロバイダーに API キーが設定されていません"
+        }
+        MessageId::VoiceErrNoRecorder => {
+            "音声：録音ツールが見つかりません。sox、arecord、rec のいずれかをインストールしてください"
+        }
+        MessageId::VoiceErrNetwork => "音声：文字起こしリクエストに失敗しました",
+        MessageId::VoiceErrEmptySend => "音声：送信する内容がありません",
+        MessageId::VoiceErrTooShort => "音声：音声が検出されませんでした。録音が短すぎます",
+        MessageId::VoiceRecording => "🎙 録音中...お話しください",
+        MessageId::VoiceProcessing => "🎙 文字起こし中...",
+        MessageId::VoiceTranscribed => "🎙 文字起こし完了",
     })
 }
 
@@ -2762,6 +3316,32 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::ConfigFooterFiltered => {
             " 输入=筛选, Backspace=删除, Ctrl+U/Esc=清除, Enter=编辑 "
         }
+        MessageId::ConfigSectionProvider => "提供商",
+        MessageId::ConfigSectionModel => "模型",
+        MessageId::ConfigSectionPermissions => "权限",
+        MessageId::ConfigSectionNetwork => "网络",
+        MessageId::ConfigSectionDisplay => "显示",
+        MessageId::ConfigSectionComposer => "编辑器",
+        MessageId::ConfigSectionSidebar => "侧边栏",
+        MessageId::ConfigSectionHistory => "历史",
+        MessageId::ConfigSectionMcp => "MCP",
+        MessageId::ConfigSectionFleet => "舰队",
+        MessageId::ConfigSectionExperimental => "实验",
+        MessageId::ConfigScopeSession => "会话",
+        MessageId::ConfigScopeSaved => "已保存",
+        MessageId::ConfigEditCancelled => "编辑已取消",
+        MessageId::ConfigEditTitlePrefix => "编辑 ",
+        MessageId::ConfigEditScopeLabel => "范围: ",
+        MessageId::ConfigEditCurrentLabel => "当前: ",
+        MessageId::ConfigEditHintLabel => "提示: ",
+        MessageId::ConfigEditNewLabel => "新值: ",
+        MessageId::ConfigEditFooter => {
+            " Enter=应用, Esc=取消, Ctrl+U=清除, Ctrl+A=全选, \u{2190}/\u{2192}=移动 "
+        }
+        MessageId::ConfigRowEffective => " (实际 {currency})",
+        MessageId::ConfigDefaultValue => "(默认)",
+        MessageId::ConfigDefaultReasoning => "(配置/默认)",
+        MessageId::ConfigUnavailable => "(不可用)",
         MessageId::HelpTitle => "帮助",
         MessageId::HelpFilterPlaceholder => "输入以筛选",
         MessageId::HelpFilterPrefix => "筛选: ",
@@ -2812,6 +3392,14 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::CmdLoadDescription => "从文件加载会话",
         MessageId::CmdLogoutDescription => "清除 API 密钥并返回设置",
         MessageId::CmdMcpDescription => "打开或管理 MCP 服务器",
+        MessageId::CmdPluginDescription => "List discovered plugin tools or show details for one",
+        MessageId::CmdPluginNoneFound => "No plugin tools discovered in {dir}",
+        MessageId::CmdPluginNotFound => "Plugin '{name}' not found",
+        MessageId::CmdPluginListHeader => "Plugin tools ({count}):",
+        MessageId::CmdPluginDetailDescription => "Description: {description}",
+        MessageId::CmdPluginDetailSchema => "Schema:\n{schema}",
+        MessageId::CmdPluginDetailApproval => "Approval: {approval}",
+        MessageId::CmdPluginDetailPath => "Path: {path}",
         MessageId::CmdMemoryDescription => "查看或管理持久用户记忆文件",
         MessageId::CmdModeDescription => "切换运行模式或打开选择器：/mode [agent|plan|yolo|1|2|3]",
         MessageId::CmdModelDescription => "切换或查看当前模型",
@@ -2823,11 +3411,11 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
             "切换或查看当前 LLM 后端（deepseek | nvidia-nim | ollama）"
         }
         MessageId::CmdQueueDescription => "查看或编辑已排队的消息",
-        MessageId::CmdQueueUsage => "用法: /queue [list|edit <n>|drop <n>|clear]",
+        MessageId::CmdQueueUsage => "用法: /queue [list|send <n>|edit <n>|drop <n>|clear]",
         MessageId::CmdQueueDraftHeader => "正在编辑已排队的消息:",
         MessageId::CmdQueueNoMessages => "没有已排队的消息",
         MessageId::CmdQueueListHeader => "已排队的消息 ({count}):",
-        MessageId::CmdQueueTip => "提示: /queue edit <n> 编辑, /queue drop <n> 删除",
+        MessageId::CmdQueueTip => "提示: /queue send <n> 立即发送, /queue drop <n> 删除",
         MessageId::CmdQueueAlreadyEditing => {
             "已在编辑一条已排队的消息。请先发送或使用 /queue clear 放弃。"
         }
@@ -2955,7 +3543,7 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::KbSendDraft => "发送当前草稿",
         MessageId::KbCloseMenu => "关闭菜单、取消请求、丢弃草稿或清空输入",
         MessageId::KbCancelOrExit => "取消请求，或空闲时退出",
-        MessageId::KbShellControls => "打开正在运行的前台命令的 shell 控制",
+        MessageId::KbShellControls => "将正在运行的前台命令转入后台",
         MessageId::KbExitEmpty => "输入框为空时退出",
         MessageId::KbCommandPalette => "打开命令面板",
         MessageId::KbFuzzyFilePicker => "打开模糊文件选择器（按 Enter 插入 @path）",
@@ -2969,7 +3557,7 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::KbCompleteCycleModes => {
             "补全 /command、排队运行轮次跟进、切换模式；Shift+Tab 切换推理强度"
         }
-        MessageId::KbJumpPlanAgentYolo => "直接跳转到 Plan / Agent / YOLO 模式",
+        MessageId::KbJumpPlanAgentYolo => "触发快捷栏槽位",
         MessageId::KbAltJumpPlanAgentYolo => "替代快捷键跳转到 Plan / Agent / YOLO 模式",
         MessageId::KbFocusSidebar => "聚焦 Work / 任务 / 代理 / Context / 自动 / 隐藏侧边栏",
         MessageId::KbTogglePlanAgent => "在 Plan 和 Agent 模式之间切换",
@@ -3098,7 +3686,7 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalRiskDestructive => "破坏性",
         MessageId::ApprovalCategorySafe => "安全",
         MessageId::ApprovalCategoryFileWrite => "文件写入",
-        MessageId::ApprovalCategoryShell => "Shell 命令",
+        MessageId::ApprovalCategoryShell => "Bash",
         MessageId::ApprovalCategoryNetwork => "网络",
         MessageId::ApprovalCategoryMcpRead => "MCP 读取",
         MessageId::ApprovalCategoryMcpAction => "MCP 操作",
@@ -3117,6 +3705,30 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalChooseAction => "Enter 执行选中项，或直接按 y/a/d",
         MessageId::ApprovalIntentLabel => "意图：",
         MessageId::ApprovalMoreLines => "  … (还有 {count} 行)",
+        // Sandbox elevation dialog.
+        // Sandbox elevation dialog.
+        MessageId::ElevationTitleSandboxDenied => "  \u{26a0} 沙箱拒绝 ",
+        MessageId::ElevationTitleRequired => " 沙箱提权 ",
+        MessageId::ElevationFieldTool => "  工具：",
+        MessageId::ElevationFieldCmd => "  命令：",
+        MessageId::ElevationFieldReason => "  原因：",
+        MessageId::ElevationImpactHeader => "  批准后的影响：",
+        MessageId::ElevationImpactNetwork => "    - 网络重试允许外部下载和 HTTP 请求",
+        MessageId::ElevationImpactWrite => "    - 写入重试扩大此工具调用的文件系统写入范围",
+        MessageId::ElevationImpactFullAccess => "    - 完全访问解除沙箱限制",
+        MessageId::ElevationPromptProceed => "  请选择处理方式：",
+        MessageId::ElevationOptionNetwork => "允许外部网络访问",
+        MessageId::ElevationOptionWrite => "允许额外写入权限",
+        MessageId::ElevationOptionFullAccess => "完全访问（文件系统 + 网络）",
+        MessageId::ElevationOptionAbort => "中止",
+        MessageId::ElevationOptionNetworkDesc => {
+            "使用外部网络访问重试此工具调用（下载和 HTTP 请求）"
+        }
+        MessageId::ElevationOptionWriteDesc => "重试此工具调用，扩大可写入的文件系统范围",
+        MessageId::ElevationOptionFullAccessDesc => {
+            "无沙箱限制重试（授予无限制的文件系统和网络访问权限）"
+        }
+        MessageId::ElevationOptionAbortDesc => "取消此工具调用",
 
         MessageId::CtxInspTitle => "上下文检查器",
         MessageId::CtxInspSessionContext => "会话上下文",
@@ -3141,7 +3753,7 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::CtxInspNoSystemPrompt => "未设置系统提示。",
         MessageId::CtxInspNoReferences => "尚未记录任何文件、目录或媒体引用。",
         MessageId::CtxInspNoToolActivity => "尚未记录任何工具活动。",
-        MessageId::CtxInspAltVHint => "打开对应的卡片并按 Alt+V 查看详细信息。",
+        MessageId::CtxInspAltVHint => "打开对应的卡片并按 Alt+V（或 v）查看详细信息。",
         MessageId::CtxInspCells => "单元格",
         MessageId::CtxInspApiMessages => "API 消息",
         MessageId::CtxInspActive => "活动中",
@@ -3165,6 +3777,38 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::CtxInspCacheTip => {
             "提示：稳定前缀区块符合 DeepSeek V4 前缀缓存条件。易变工作集的更改仅会破坏缓存尾部。"
         }
+        MessageId::ToolFamilyRead => "读取",
+        MessageId::ToolFamilyPatch => "修补",
+        MessageId::ToolFamilyRun => "运行",
+        MessageId::ToolFamilyFind => "搜索",
+        MessageId::ToolFamilyDelegate => "委派",
+        MessageId::ToolFamilyFanout => "扇出",
+        MessageId::ToolFamilyRlm => "rlm",
+        MessageId::ToolFamilyVerify => "验证",
+        MessageId::ToolFamilyThink => "思考",
+        MessageId::ToolFamilyGeneric => "工具",
+        // Voice commands
+        MessageId::CmdVoiceDescription => "切换语音输入：录制语音并转录为文字",
+        MessageId::CmdVoiceSendDescription => {
+            "切换语音自动发送：转录以「发送」或「send it」结尾时自动提交"
+        }
+        MessageId::CmdVoiceControlDescription => {
+            "切换语音控制：AI 辅助的语音听写（结合当前输入内容）"
+        }
+        MessageId::VoiceEnabled => "语音输入已开启，开始说话即可录制",
+        MessageId::VoiceDisabled => "语音输入已关闭",
+        MessageId::VoiceSendEnabled => "语音自动发送已开启",
+        MessageId::VoiceSendDisabled => "语音自动发送已关闭",
+        MessageId::VoiceControlEnabled => "语音控制已开启",
+        MessageId::VoiceControlDisabled => "语音控制已关闭",
+        MessageId::VoiceErrNoAuth => "语音：当前提供商未配置 API 密钥",
+        MessageId::VoiceErrNoRecorder => "语音：未找到录音工具，请安装 sox、arecord 或 rec",
+        MessageId::VoiceErrNetwork => "语音：转录请求失败",
+        MessageId::VoiceErrEmptySend => "语音：没有可发送的内容",
+        MessageId::VoiceErrTooShort => "语音：未检测到有效语音，录制时间过短",
+        MessageId::VoiceRecording => "🎙 正在录音...请说话",
+        MessageId::VoiceProcessing => "🎙 正在转录...",
+        MessageId::VoiceTranscribed => "🎙 转录完成",
     })
 }
 
@@ -3200,6 +3844,32 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::ConfigFooterFiltered => {
             " digite=filtrar, Backspace=apagar, Ctrl+U/Esc=limpar, Enter=editar "
         }
+        MessageId::ConfigSectionProvider => "Provedor",
+        MessageId::ConfigSectionModel => "Modelo",
+        MessageId::ConfigSectionPermissions => "Permissões",
+        MessageId::ConfigSectionNetwork => "Rede",
+        MessageId::ConfigSectionDisplay => "Exibição",
+        MessageId::ConfigSectionComposer => "Compositor",
+        MessageId::ConfigSectionSidebar => "Barra lateral",
+        MessageId::ConfigSectionHistory => "Histórico",
+        MessageId::ConfigSectionMcp => "MCP",
+        MessageId::ConfigSectionFleet => "Fleet",
+        MessageId::ConfigSectionExperimental => "Experimental",
+        MessageId::ConfigScopeSession => "SESSÃO",
+        MessageId::ConfigScopeSaved => "SALVO",
+        MessageId::ConfigEditCancelled => "Edição cancelada",
+        MessageId::ConfigEditTitlePrefix => "Editar ",
+        MessageId::ConfigEditScopeLabel => "Escopo: ",
+        MessageId::ConfigEditCurrentLabel => "Atual: ",
+        MessageId::ConfigEditHintLabel => "Dica: ",
+        MessageId::ConfigEditNewLabel => "Novo: ",
+        MessageId::ConfigEditFooter => {
+            " Enter=aplicar, Esc=cancelar, Ctrl+U=limpar, Ctrl+A=tudo, \u{2190}/\u{2192}=mover "
+        }
+        MessageId::ConfigRowEffective => " (efetivo {currency})",
+        MessageId::ConfigDefaultValue => "(padrão)",
+        MessageId::ConfigDefaultReasoning => "(config/padrão)",
+        MessageId::ConfigUnavailable => "(indisponível)",
         MessageId::HelpTitle => "Ajuda",
         MessageId::HelpFilterPlaceholder => "Digite para filtrar",
         MessageId::HelpFilterPrefix => "Filtro: ",
@@ -3264,6 +3934,14 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::CmdLoadDescription => "Carregar a sessão de um arquivo",
         MessageId::CmdLogoutDescription => "Limpar a chave de API e voltar à configuração",
         MessageId::CmdMcpDescription => "Abrir ou gerenciar servidores MCP",
+        MessageId::CmdPluginDescription => "List discovered plugin tools or show details for one",
+        MessageId::CmdPluginNoneFound => "No plugin tools discovered in {dir}",
+        MessageId::CmdPluginNotFound => "Plugin '{name}' not found",
+        MessageId::CmdPluginListHeader => "Plugin tools ({count}):",
+        MessageId::CmdPluginDetailDescription => "Description: {description}",
+        MessageId::CmdPluginDetailSchema => "Schema:\n{schema}",
+        MessageId::CmdPluginDetailApproval => "Approval: {approval}",
+        MessageId::CmdPluginDetailPath => "Path: {path}",
         MessageId::CmdMemoryDescription => {
             "Inspecionar ou gerenciar o arquivo persistente de memória do usuário"
         }
@@ -3279,11 +3957,13 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
             "Trocar ou exibir o backend LLM ativo (deepseek | nvidia-nim | ollama)"
         }
         MessageId::CmdQueueDescription => "Ver ou editar mensagens enfileiradas",
-        MessageId::CmdQueueUsage => "Uso: /queue [list|edit <n>|drop <n>|clear]",
+        MessageId::CmdQueueUsage => "Uso: /queue [list|send <n>|edit <n>|drop <n>|clear]",
         MessageId::CmdQueueDraftHeader => "Editando mensagem enfileirada:",
         MessageId::CmdQueueNoMessages => "Nenhuma mensagem enfileirada",
         MessageId::CmdQueueListHeader => "Mensagens enfileiradas ({count}):",
-        MessageId::CmdQueueTip => "Dica: /queue edit <n> para editar, /queue drop <n> para remover",
+        MessageId::CmdQueueTip => {
+            "Dica: /queue send <n> para enviar agora, /queue drop <n> para remover"
+        }
         MessageId::CmdQueueAlreadyEditing => {
             "Já está editando uma mensagem enfileirada. Envie-a ou use /queue clear para descartar."
         }
@@ -3437,7 +4117,7 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
             "Fechar menu, cancelar requisição, descartar rascunho ou limpar entrada"
         }
         MessageId::KbCancelOrExit => "Cancelar requisição ou sair quando ocioso",
-        MessageId::KbShellControls => "Abrir controles de shell para comando em primeiro plano",
+        MessageId::KbShellControls => "Enviar o comando em primeiro plano para segundo plano",
         MessageId::KbExitEmpty => "Sair quando entrada vazia",
         MessageId::KbCommandPalette => "Abrir paleta de comandos",
         MessageId::KbFuzzyFilePicker => {
@@ -3459,7 +4139,7 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::KbCompleteCycleModes => {
             "Completar /command, enfileirar follow-up, ciclar modos; Shift+Tab cicla esforço de raciocínio"
         }
-        MessageId::KbJumpPlanAgentYolo => "Pular direto para modo Plan / Agent / YOLO",
+        MessageId::KbJumpPlanAgentYolo => "Acionar slots da hotbar",
         MessageId::KbAltJumpPlanAgentYolo => "Salto alternativo para modo Plan / Agent / YOLO",
         MessageId::KbFocusSidebar => {
             "Focar barra lateral Work / Tasks / Agents / Context / Auto / Ocultar"
@@ -3612,7 +4292,7 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalRiskDestructive => "DESTRUTIVO",
         MessageId::ApprovalCategorySafe => "Seguro",
         MessageId::ApprovalCategoryFileWrite => "Escrita de Arquivo",
-        MessageId::ApprovalCategoryShell => "Comando Shell",
+        MessageId::ApprovalCategoryShell => "Bash",
         MessageId::ApprovalCategoryNetwork => "Rede",
         MessageId::ApprovalCategoryMcpRead => "Leitura MCP",
         MessageId::ApprovalCategoryMcpAction => "Ação MCP",
@@ -3631,6 +4311,38 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalChooseAction => "Enter para selecionar, ou pressione y/a/d diretamente",
         MessageId::ApprovalIntentLabel => "Intenção: ",
         MessageId::ApprovalMoreLines => "  … (+{count} linhas)",
+        // Sandbox elevation dialog.
+        // Sandbox elevation dialog.
+        MessageId::ElevationTitleSandboxDenied => "  \u{26a0} Sandbox Negado ",
+        MessageId::ElevationTitleRequired => " Elevação de Sandbox Necessária ",
+        MessageId::ElevationFieldTool => "  Ferramenta: ",
+        MessageId::ElevationFieldCmd => "  Comando:  ",
+        MessageId::ElevationFieldReason => "  Motivo: ",
+        MessageId::ElevationImpactHeader => "  Impacto se aprovado:",
+        MessageId::ElevationImpactNetwork => {
+            "    - retry de rede permite downloads externos e requisições HTTP"
+        }
+        MessageId::ElevationImpactWrite => {
+            "    - retry de escrita expande o escopo do sistema de arquivos para esta chamada"
+        }
+        MessageId::ElevationImpactFullAccess => {
+            "    - acesso total remove todas as restrições de sandbox para este retry"
+        }
+        MessageId::ElevationPromptProceed => "  Escolha como prosseguir:",
+        MessageId::ElevationOptionNetwork => "Permitir rede externa",
+        MessageId::ElevationOptionWrite => "Permitir acesso extra de escrita",
+        MessageId::ElevationOptionFullAccess => "Acesso total (sistema de arquivos + rede)",
+        MessageId::ElevationOptionAbort => "Abortar",
+        MessageId::ElevationOptionNetworkDesc => {
+            "Retry esta chamada com acesso de rede externa para downloads e requisições HTTP"
+        }
+        MessageId::ElevationOptionWriteDesc => {
+            "Retry esta chamada com escopo adicional de sistema de arquivos gravável"
+        }
+        MessageId::ElevationOptionFullAccessDesc => {
+            "Retry sem limites de sandbox; concede acesso irrestrito ao sistema de arquivos e rede"
+        }
+        MessageId::ElevationOptionAbortDesc => "Cancelar esta execução de ferramenta",
 
         MessageId::CtxInspTitle => "Inspetor de contexto",
         MessageId::CtxInspSessionContext => "Contexto da sessão",
@@ -3658,7 +4370,7 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         }
         MessageId::CtxInspNoToolActivity => "Nenhuma atividade de ferramenta registrada ainda.",
         MessageId::CtxInspAltVHint => {
-            "Abra o cartão correspondente e pressione Alt+V para detalhes completos."
+            "Abra o cartão correspondente e pressione Alt+V (ou v) para detalhes completos."
         }
         MessageId::CtxInspCells => "células",
         MessageId::CtxInspApiMessages => "mensagens da API",
@@ -3683,6 +4395,42 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::CtxInspCacheTip => {
             "Dica: Blocos de prefixo estável são elegíveis para cache de prefixo DeepSeek V4. Alterações no conjunto de trabalho volátil quebram o cache apenas no final."
         }
+        MessageId::ToolFamilyRead => "ler",
+        MessageId::ToolFamilyPatch => "corrigir",
+        MessageId::ToolFamilyRun => "executar",
+        MessageId::ToolFamilyFind => "buscar",
+        MessageId::ToolFamilyDelegate => "delegar",
+        MessageId::ToolFamilyFanout => "fanout",
+        MessageId::ToolFamilyRlm => "rlm",
+        MessageId::ToolFamilyVerify => "verificar",
+        MessageId::ToolFamilyThink => "pensar",
+        MessageId::ToolFamilyGeneric => "ferramenta",
+        // Voice commands
+        MessageId::CmdVoiceDescription => {
+            "Alternar entrada de voz: gravar fala e transcrever para texto"
+        }
+        MessageId::CmdVoiceSendDescription => {
+            "Alternar envio automático por voz: envia quando a transcrição termina com \"send it\""
+        }
+        MessageId::CmdVoiceControlDescription => {
+            "Alternar controle por voz: ditado assistido por IA"
+        }
+        MessageId::VoiceEnabled => "Entrada de voz ativada. Fale para gravar.",
+        MessageId::VoiceDisabled => "Entrada de voz desativada.",
+        MessageId::VoiceSendEnabled => "Envio automático por voz ativado.",
+        MessageId::VoiceSendDisabled => "Envio automático por voz desativado.",
+        MessageId::VoiceControlEnabled => "Controle por voz ativado.",
+        MessageId::VoiceControlDisabled => "Controle por voz desativado.",
+        MessageId::VoiceErrNoAuth => "Voz: nenhuma chave de API configurada para o provedor ativo",
+        MessageId::VoiceErrNoRecorder => {
+            "Voz: nenhuma ferramenta de gravação encontrada. Instale sox, arecord ou rec."
+        }
+        MessageId::VoiceErrNetwork => "Voz: falha na solicitação de transcrição",
+        MessageId::VoiceErrEmptySend => "Voz: nada para enviar",
+        MessageId::VoiceErrTooShort => "Voz: nenhuma fala detectada, gravação muito curta",
+        MessageId::VoiceRecording => "🎙 Gravando... fale agora",
+        MessageId::VoiceProcessing => "🎙 Transcrevendo...",
+        MessageId::VoiceTranscribed => "🎙 Transcrito",
     })
 }
 
@@ -3718,6 +4466,32 @@ fn spanish_latin_america(id: MessageId) -> Option<&'static str> {
         MessageId::ConfigFooterFiltered => {
             " escribir=filtrar, Backspace=borrar, Ctrl+U/Esc=limpiar, Enter=editar "
         }
+        MessageId::ConfigSectionProvider => "Proveedor",
+        MessageId::ConfigSectionModel => "Modelo",
+        MessageId::ConfigSectionPermissions => "Permisos",
+        MessageId::ConfigSectionNetwork => "Red",
+        MessageId::ConfigSectionDisplay => "Pantalla",
+        MessageId::ConfigSectionComposer => "Compositor",
+        MessageId::ConfigSectionSidebar => "Barra lateral",
+        MessageId::ConfigSectionHistory => "Historial",
+        MessageId::ConfigSectionMcp => "MCP",
+        MessageId::ConfigSectionFleet => "Fleet",
+        MessageId::ConfigSectionExperimental => "Experimental",
+        MessageId::ConfigScopeSession => "SESIÓN",
+        MessageId::ConfigScopeSaved => "GUARDADO",
+        MessageId::ConfigEditCancelled => "Edición cancelada",
+        MessageId::ConfigEditTitlePrefix => "Editar ",
+        MessageId::ConfigEditScopeLabel => "Ámbito: ",
+        MessageId::ConfigEditCurrentLabel => "Actual: ",
+        MessageId::ConfigEditHintLabel => "Pista: ",
+        MessageId::ConfigEditNewLabel => "Nuevo: ",
+        MessageId::ConfigEditFooter => {
+            " Enter=aplicar, Esc=cancelar, Ctrl+U=limpiar, Ctrl+A=todo, \u{2190}/\u{2192}=mover "
+        }
+        MessageId::ConfigRowEffective => " (efectivo {currency})",
+        MessageId::ConfigDefaultValue => "(predeterminado)",
+        MessageId::ConfigDefaultReasoning => "(config/predeterminado)",
+        MessageId::ConfigUnavailable => "(no disponible)",
         MessageId::HelpTitle => "Ayuda",
         MessageId::HelpFilterPlaceholder => "Escribe para filtrar",
         MessageId::HelpFilterPrefix => "Filtro: ",
@@ -3786,6 +4560,14 @@ fn spanish_latin_america(id: MessageId) -> Option<&'static str> {
         MessageId::CmdLoadDescription => "Cargar la sesión desde un archivo",
         MessageId::CmdLogoutDescription => "Limpiar la clave de API y volver a la configuración",
         MessageId::CmdMcpDescription => "Abrir o gestionar servidores MCP",
+        MessageId::CmdPluginDescription => "List discovered plugin tools or show details for one",
+        MessageId::CmdPluginNoneFound => "No plugin tools discovered in {dir}",
+        MessageId::CmdPluginNotFound => "Plugin '{name}' not found",
+        MessageId::CmdPluginListHeader => "Plugin tools ({count}):",
+        MessageId::CmdPluginDetailDescription => "Description: {description}",
+        MessageId::CmdPluginDetailSchema => "Schema:\n{schema}",
+        MessageId::CmdPluginDetailApproval => "Approval: {approval}",
+        MessageId::CmdPluginDetailPath => "Path: {path}",
         MessageId::CmdMemoryDescription => {
             "Inspeccionar o gestionar el archivo persistente de memoria del usuario"
         }
@@ -3803,12 +4585,12 @@ fn spanish_latin_america(id: MessageId) -> Option<&'static str> {
             "Cambiar o mostrar el backend LLM activo (deepseek | nvidia-nim | ollama)"
         }
         MessageId::CmdQueueDescription => "Ver o editar mensajes en cola",
-        MessageId::CmdQueueUsage => "Uso: /queue [list|edit <n>|drop <n>|clear]",
+        MessageId::CmdQueueUsage => "Uso: /queue [list|send <n>|edit <n>|drop <n>|clear]",
         MessageId::CmdQueueDraftHeader => "Editando mensaje en cola:",
         MessageId::CmdQueueNoMessages => "No hay mensajes en cola",
         MessageId::CmdQueueListHeader => "Mensajes en cola ({count}):",
         MessageId::CmdQueueTip => {
-            "Consejo: /queue edit <n> para editar, /queue drop <n> para eliminar"
+            "Consejo: /queue send <n> para enviar ahora, /queue drop <n> para eliminar"
         }
         MessageId::CmdQueueAlreadyEditing => {
             "Ya estás editando un mensaje en cola. Envíalo o usa /queue clear para descartarlo."
@@ -3967,7 +4749,7 @@ fn spanish_latin_america(id: MessageId) -> Option<&'static str> {
             "Cerrar menú, cancelar solicitud, descartar borrador o limpiar entrada"
         }
         MessageId::KbCancelOrExit => "Cancelar solicitud o salir cuando está inactivo",
-        MessageId::KbShellControls => "Abrir controles de shell para comando en primer plano",
+        MessageId::KbShellControls => "Enviar el comando en primer plano a segundo plano",
         MessageId::KbExitEmpty => "Salir cuando la entrada está vacía",
         MessageId::KbCommandPalette => "Abrir paleta de comandos",
         MessageId::KbFuzzyFilePicker => {
@@ -3989,7 +4771,7 @@ fn spanish_latin_america(id: MessageId) -> Option<&'static str> {
         MessageId::KbCompleteCycleModes => {
             "Completar /command, encolar follow-up, ciclar modos; Shift+Tab cicla esfuerzo de razonamiento"
         }
-        MessageId::KbJumpPlanAgentYolo => "Saltar directo a modo Plan / Agent / YOLO",
+        MessageId::KbJumpPlanAgentYolo => "Activar ranuras de la hotbar",
         MessageId::KbAltJumpPlanAgentYolo => "Salto alternativo a modo Plan / Agent / YOLO",
         MessageId::KbFocusSidebar => {
             "Enfocar barra lateral Work / Tasks / Agents / Context / Auto / Ocultar"
@@ -4140,7 +4922,7 @@ fn spanish_latin_america(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalRiskDestructive => "DESTRUCTIVO",
         MessageId::ApprovalCategorySafe => "Seguro",
         MessageId::ApprovalCategoryFileWrite => "Escritura de Archivo",
-        MessageId::ApprovalCategoryShell => "Comando Shell",
+        MessageId::ApprovalCategoryShell => "Bash",
         MessageId::ApprovalCategoryNetwork => "Red",
         MessageId::ApprovalCategoryMcpRead => "Lectura MCP",
         MessageId::ApprovalCategoryMcpAction => "Acción MCP",
@@ -4159,6 +4941,38 @@ fn spanish_latin_america(id: MessageId) -> Option<&'static str> {
         MessageId::ApprovalChooseAction => "Enter para seleccionar, o presione y/a/d directamente",
         MessageId::ApprovalIntentLabel => "Intención: ",
         MessageId::ApprovalMoreLines => "  … (+{count} líneas)",
+        // Sandbox elevation dialog.
+        // Sandbox elevation dialog.
+        MessageId::ElevationTitleSandboxDenied => "  \u{26a0} Sandbox Denegado ",
+        MessageId::ElevationTitleRequired => " Elevación de Sandbox Requerida ",
+        MessageId::ElevationFieldTool => "  Herramienta: ",
+        MessageId::ElevationFieldCmd => "  Comando:  ",
+        MessageId::ElevationFieldReason => "  Motivo: ",
+        MessageId::ElevationImpactHeader => "  Impacto si se aprueba:",
+        MessageId::ElevationImpactNetwork => {
+            "    - reintento de red permite descargas y solicitudes HTTP externas"
+        }
+        MessageId::ElevationImpactWrite => {
+            "    - reintento de escritura expande el ámbito del sistema de archivos para esta llamada"
+        }
+        MessageId::ElevationImpactFullAccess => {
+            "    - acceso total elimina todas las restricciones de sandbox para este reintento"
+        }
+        MessageId::ElevationPromptProceed => "  Elige cómo proceder:",
+        MessageId::ElevationOptionNetwork => "Permitir red externa",
+        MessageId::ElevationOptionWrite => "Permitir acceso extra de escritura",
+        MessageId::ElevationOptionFullAccess => "Acceso total (sistema de archivos + red)",
+        MessageId::ElevationOptionAbort => "Abortar",
+        MessageId::ElevationOptionNetworkDesc => {
+            "Reintenta esta llamada con acceso de red externa para descargas y solicitudes HTTP"
+        }
+        MessageId::ElevationOptionWriteDesc => {
+            "Reintenta esta llamada con ámbito adicional de sistema de archivos grabable"
+        }
+        MessageId::ElevationOptionFullAccessDesc => {
+            "Reintenta sin límites de sandbox; concede acceso sin restricciones al sistema de archivos y red"
+        }
+        MessageId::ElevationOptionAbortDesc => "Cancelar esta ejecución de herramienta",
 
         MessageId::CtxInspTitle => "Inspector de contexto",
         MessageId::CtxInspSessionContext => "Contexto de la sesión",
@@ -4186,7 +5000,7 @@ fn spanish_latin_america(id: MessageId) -> Option<&'static str> {
         }
         MessageId::CtxInspNoToolActivity => "Aún no se ha registrado actividad de herramientas.",
         MessageId::CtxInspAltVHint => {
-            "Abra la tarjeta correspondiente y presione Alt+V para ver los detalles completos."
+            "Abra la tarjeta correspondiente y presione Alt+V (o v) para ver los detalles completos."
         }
         MessageId::CtxInspCells => "celdas",
         MessageId::CtxInspApiMessages => "mensajes de API",
@@ -4211,6 +5025,44 @@ fn spanish_latin_america(id: MessageId) -> Option<&'static str> {
         MessageId::CtxInspCacheTip => {
             "Consejo: Los bloques de prefijo estable son elegibles para caché de prefijo DeepSeek V4. Los cambios en el conjunto de trabajo volátil solo rompen la caché al final."
         }
+        MessageId::ToolFamilyRead => "leer",
+        MessageId::ToolFamilyPatch => "parchear",
+        MessageId::ToolFamilyRun => "ejecutar",
+        MessageId::ToolFamilyFind => "buscar",
+        MessageId::ToolFamilyDelegate => "delegar",
+        MessageId::ToolFamilyFanout => "fanout",
+        MessageId::ToolFamilyRlm => "rlm",
+        MessageId::ToolFamilyVerify => "verificar",
+        MessageId::ToolFamilyThink => "pensar",
+        MessageId::ToolFamilyGeneric => "herramienta",
+        // Voice commands
+        MessageId::CmdVoiceDescription => {
+            "Alternar entrada de voz: grabar voz y transcribir a texto"
+        }
+        MessageId::CmdVoiceSendDescription => {
+            "Alternar envío automático por voz: envía cuando la transcripción termina con \"send it\""
+        }
+        MessageId::CmdVoiceControlDescription => {
+            "Alternar control por voz: dictado asistido por IA"
+        }
+        MessageId::VoiceEnabled => "Entrada de voz activada. Habla para grabar.",
+        MessageId::VoiceDisabled => "Entrada de voz desactivada.",
+        MessageId::VoiceSendEnabled => "Envío automático por voz activado.",
+        MessageId::VoiceSendDisabled => "Envío automático por voz desactivado.",
+        MessageId::VoiceControlEnabled => "Control por voz activado.",
+        MessageId::VoiceControlDisabled => "Control por voz desactivado.",
+        MessageId::VoiceErrNoAuth => {
+            "Voz: no hay clave de API configurada para el proveedor activo"
+        }
+        MessageId::VoiceErrNoRecorder => {
+            "Voz: no se encontró herramienta de grabación. Instala sox, arecord o rec."
+        }
+        MessageId::VoiceErrNetwork => "Voz: falló la solicitud de transcripción",
+        MessageId::VoiceErrEmptySend => "Voz: nada que enviar",
+        MessageId::VoiceErrTooShort => "Voz: no se detectó voz, grabación demasiado corta",
+        MessageId::VoiceRecording => "🎙 Grabando... habla ahora",
+        MessageId::VoiceProcessing => "🎙 Transcribiendo...",
+        MessageId::VoiceTranscribed => "🎙 Transcrito",
     })
 }
 

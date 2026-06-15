@@ -83,7 +83,22 @@ function deriveProviders() {
     Vllm: { id: "vllm", label: "vLLM", env: "VLLM_API_KEY" },
     Ollama: { id: "ollama", label: "Ollama", env: "OLLAMA_API_KEY" },
     Huggingface: { id: "huggingface", label: "Hugging Face", env: "HUGGINGFACE_API_KEY / HF_TOKEN" },
+    Together: { id: "together", label: "Together AI", env: "TOGETHER_API_KEY" },
+    OpenaiCodex: { id: "openai-codex", label: "OpenAI Codex", env: "ChatGPT/Codex OAuth via `codex login` (OPENAI_CODEX_ACCESS_TOKEN / CODEX_ACCESS_TOKEN override)" },
+    Anthropic: { id: "anthropic", label: "Anthropic", env: "ANTHROPIC_API_KEY" },
   };
+  // Fail loudly on unmapped variants so a new provider can never be silently
+  // dropped from the generated facts again. DeepseekCN is the one deliberate
+  // exclusion (see comment above / issue #1104).
+  const EXCLUDED = new Set(["DeepseekCN"]);
+  const unmapped = variants.filter((v) => !EXCLUDED.has(v) && !labelMap[v]);
+  if (unmapped.length > 0) {
+    console.error(
+      `[derive-facts] ApiProvider variants missing from labelMap: ${unmapped.join(", ")}. ` +
+        "Add them to labelMap here AND in web/lib/facts-drift.ts (or to EXCLUDED if intentionally hidden).",
+    );
+    process.exit(1);
+  }
   return variants.map((v) => labelMap[v]).filter(Boolean);
 }
 

@@ -17,6 +17,7 @@ use codewhale_release::{
 };
 use reqwest::Proxy;
 use std::io::Write;
+use std::time::Duration;
 
 /// Run the self-update workflow.
 pub fn run_update(beta: bool, check_only: bool, proxy_arg: Option<String>) -> Result<()> {
@@ -28,6 +29,8 @@ pub fn run_update(beta: bool, check_only: bool, proxy_arg: Option<String>) -> Re
 
     let current_exe =
         std::env::current_exe().context("failed to determine current executable path")?;
+    let legacy_binary = is_legacy_binary(&current_exe);
+
     let targets = update_targets_for_exe(&current_exe);
     let channel = ReleaseChannel::from_beta_flag(beta);
     let current_version = env!("CARGO_PKG_VERSION");
@@ -39,6 +42,10 @@ pub fn run_update(beta: bool, check_only: bool, proxy_arg: Option<String>) -> Re
     println!("Checking for {} updates...", channel.label());
     println!("Current binary: {}", current_exe.display());
     println!("Current version: v{current_version}");
+    if legacy_binary {
+        println!();
+        println!("{}", legacy_binary_message(&current_exe));
+    }
 
     if check_only {
         let latest_tag = latest_release_tag(channel, proxy.as_ref())
@@ -140,6 +147,7 @@ pub fn run_update(beta: bool, check_only: bool, proxy_arg: Option<String>) -> Re
             }
         }
 
+        preflight_downloaded_binary(&asset.name, &bytes)?;
         downloads.push((target.path.clone(), asset.name.clone(), bytes));
     }
 
@@ -187,12 +195,58 @@ pub(crate) fn release_arch_for_rust_arch(arch: &str) -> &str {
     }
 }
 
+/// Returns true when the binary name belongs to the pre-rebrand `deepseek-tui` era.
+pub(crate) fn is_legacy_binary(current_exe: &Path) -> bool {
+    let exe_name = current_exe
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    exe_name.starts_with("deepseek")
+}
+
+fn legacy_binary_message(current_exe: &Path) -> String {
+    format!(
+        "\
+this binary ({exe}) is using the legacy deepseek/deepseek-tui command name.
+
+The package has been renamed to `codewhale`. This update will install canonical
+CodeWhale binaries (`codewhale` and, when present, `codewhale-tui`) beside the
+legacy command when the install directory is writable. DeepSeek provider support
+is unchanged.
+
+If this update cannot write to the install directory, reinstall using your
+original install method:
+
+  npm:
+    npm uninstall -g deepseek-tui
+    npm install -g codewhale
+
+  Cargo:
+    cargo uninstall deepseek-tui-cli 2>/dev/null || true
+    cargo uninstall deepseek-tui 2>/dev/null || true
+    cargo install codewhale-cli --locked
+    cargo install codewhale-tui --locked
+
+  Homebrew:
+    brew upgrade deepseek-tui
+
+  Manual binary:
+    download the matched codewhale and codewhale-tui assets from
+    https://github.com/Hmbown/CodeWhale/releases/latest
+
+Once `codewhale` is on your PATH, run `codewhale update` for future updates.",
+        exe = current_exe.display(),
+    )
+}
+
 pub(crate) fn binary_prefix_for_exe(current_exe: &Path) -> &'static str {
     let exe_name = current_exe
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("codewhale");
-    if exe_name.contains("codewhale-tui") {
+        .unwrap_or("codewhale")
+        .to_ascii_lowercase();
+    if exe_name.contains("codewhale-tui") || exe_name.contains("deepseek-tui") {
         "codewhale-tui"
     } else {
         "codewhale"
@@ -211,6 +265,40 @@ fn sibling_binary_path(current_exe: &Path, sibling_prefix: &str) -> PathBuf {
     current_exe.with_file_name(format!("{sibling_prefix}{}", std::env::consts::EXE_SUFFIX))
 }
 
+fn canonical_binary_path_for_prefix(current_exe: &Path, prefix: &str) -> PathBuf {
+    if is_legacy_binary(current_exe) {
+        current_exe.with_file_name(format!("{prefix}{}", std::env::consts::EXE_SUFFIX))
+    } else {
+        current_exe.to_path_buf()
+    }
+}
+
+fn legacy_binary_name_for_prefix(prefix: &str) -> &'static str {
+    if prefix == "codewhale-tui" {
+        "deepseek-tui"
+    } else {
+        "deepseek"
+    }
+}
+
+fn legacy_sibling_binary_path(current_exe: &Path, sibling_prefix: &str) -> PathBuf {
+    current_exe.with_file_name(format!(
+        "{}{}",
+        legacy_binary_name_for_prefix(sibling_prefix),
+        std::env::consts::EXE_SUFFIX
+    ))
+}
+
+fn should_update_sibling(
+    current_exe: &Path,
+    canonical_sibling: &Path,
+    sibling_prefix: &str,
+) -> bool {
+    canonical_sibling.exists()
+        || (is_legacy_binary(current_exe)
+            && legacy_sibling_binary_path(current_exe, sibling_prefix).exists())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct UpdateTarget {
     path: PathBuf,
@@ -220,7 +308,7 @@ struct UpdateTarget {
 fn update_targets_for_exe(current_exe: &Path) -> Vec<UpdateTarget> {
     let current_prefix = binary_prefix_for_exe(current_exe);
     let mut targets = vec![UpdateTarget {
-        path: current_exe.to_path_buf(),
+        path: canonical_binary_path_for_prefix(current_exe, current_prefix),
         asset_stem: release_asset_stem_for_prefix(
             current_prefix,
             std::env::consts::OS,
@@ -230,7 +318,7 @@ fn update_targets_for_exe(current_exe: &Path) -> Vec<UpdateTarget> {
 
     let sibling_prefix = sibling_prefix_for(current_prefix);
     let sibling = sibling_binary_path(current_exe, sibling_prefix);
-    if sibling.exists() {
+    if should_update_sibling(current_exe, &sibling, sibling_prefix) {
         targets.push(UpdateTarget {
             path: sibling,
             asset_stem: release_asset_stem_for_prefix(
@@ -367,6 +455,7 @@ fn update_http_client(proxy: Option<&Proxy>) -> Result<reqwest::blocking::Client
     }
     builder
         .user_agent(UPDATE_USER_AGENT)
+        .timeout(Duration::from_secs(5 * 60))
         .build()
         .context("failed to build update HTTP client")
 }
@@ -491,6 +580,164 @@ fn sha256_hex(data: &[u8]) -> String {
     use sha2::Digest;
     let hash = sha2::Sha256::digest(data);
     format!("{hash:x}")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct GlibcVersion {
+    major: u32,
+    minor: u32,
+    patch: u32,
+}
+
+impl GlibcVersion {
+    fn new(major: u32, minor: u32, patch: u32) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+        }
+    }
+
+    fn display(self) -> String {
+        if self.patch == 0 {
+            format!("{}.{}", self.major, self.minor)
+        } else {
+            format!("{}.{}.{}", self.major, self.minor, self.patch)
+        }
+    }
+}
+
+fn parse_glibc_version(text: &str) -> Option<GlibcVersion> {
+    text.split(|ch: char| !(ch.is_ascii_digit() || ch == '.'))
+        .filter(|part| part.contains('.'))
+        .find_map(parse_glibc_version_token)
+}
+
+fn parse_glibc_version_token(token: &str) -> Option<GlibcVersion> {
+    let mut parts = token.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+    Some(GlibcVersion::new(major, minor, patch))
+}
+
+fn highest_required_glibc(bytes: &[u8]) -> Option<GlibcVersion> {
+    const MARKER: &[u8] = b"GLIBC_";
+    let mut offset = 0;
+    let mut highest = None;
+
+    while let Some(found) = find_bytes(&bytes[offset..], MARKER) {
+        let start = offset + found + MARKER.len();
+        let mut end = start;
+        while end < bytes.len() && (bytes[end].is_ascii_digit() || bytes[end] == b'.') {
+            end += 1;
+        }
+        if end > start
+            && let Ok(token) = std::str::from_utf8(&bytes[start..end])
+            && let Some(version) = parse_glibc_version_token(token)
+            && highest.is_none_or(|current| version > current)
+        {
+            highest = Some(version);
+        }
+        offset = start;
+    }
+
+    highest
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn glibc_check_disabled() -> bool {
+    [
+        "CODEWHALE_SKIP_GLIBC_CHECK",
+        "DEEPSEEK_TUI_SKIP_GLIBC_CHECK",
+        "DEEPSEEK_SKIP_GLIBC_CHECK",
+    ]
+    .into_iter()
+    .any(|name| std::env::var_os(name).is_some_and(|value| value == std::ffi::OsStr::new("1")))
+}
+
+fn preflight_downloaded_binary(asset_name: &str, bytes: &[u8]) -> Result<()> {
+    if !cfg!(target_os = "linux") || glibc_check_disabled() {
+        return Ok(());
+    }
+
+    let Some(required) = highest_required_glibc(bytes) else {
+        return Ok(());
+    };
+    let host = detect_host_glibc();
+    if host.is_some_and(|host| host >= required) {
+        return Ok(());
+    }
+
+    bail!(
+        "{}",
+        glibc_compatibility_message(asset_name, required, host)
+    );
+}
+
+fn detect_host_glibc() -> Option<GlibcVersion> {
+    let getconf = std::process::Command::new("getconf")
+        .arg("GNU_LIBC_VERSION")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .and_then(|output| parse_glibc_version(&output));
+    if getconf.is_some() {
+        return getconf;
+    }
+
+    std::process::Command::new("ldd")
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| {
+            let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+            if text.trim().is_empty() {
+                text = String::from_utf8_lossy(&output.stderr).to_string();
+            }
+            parse_glibc_version(&text)
+        })
+}
+
+fn glibc_compatibility_message(
+    asset_name: &str,
+    required: GlibcVersion,
+    host: Option<GlibcVersion>,
+) -> String {
+    let host_line = match host {
+        Some(host) => format!(
+            "this system has glibc {}, which is too old for that asset.",
+            host.display()
+        ),
+        None => "this system does not appear to provide GNU libc.".to_string(),
+    };
+    format!(
+        "\
+Prebuilt CodeWhale asset `{asset_name}` requires GLIBC_{required}, but {host_line}
+
+Official Linux release binaries are GNU libc builds. Ubuntu 22.04 ships glibc
+2.35, so it cannot run a binary that was built against Ubuntu 24.04/glibc 2.39.
+
+Install from source on this host instead:
+
+  cargo install codewhale-cli --locked
+  cargo install codewhale-tui --locked
+
+Release engineering follow-up: build Linux GNU assets against an older glibc
+baseline, or add a musl/static Linux asset. Set CODEWHALE_SKIP_GLIBC_CHECK=1 to
+bypass this preflight at your own risk.",
+        required = required.display(),
+    )
 }
 
 /// Replace the running binary.
@@ -620,6 +867,10 @@ mod tests {
             "codewhale-tui"
         );
         assert_eq!(
+            binary_prefix_for_exe(Path::new("CodeWhale-TUI.exe")),
+            "codewhale-tui"
+        );
+        assert_eq!(
             binary_prefix_for_exe(Path::new("/usr/local/bin/codewhale-tui")),
             "codewhale-tui"
         );
@@ -640,6 +891,114 @@ mod tests {
             binary_prefix_for_exe(Path::new("other-binary")),
             "codewhale"
         );
+
+        // Legacy names still map to the canonical update asset prefixes.
+        assert_eq!(
+            binary_prefix_for_exe(Path::new("deepseek-tui")),
+            "codewhale-tui"
+        );
+        assert_eq!(
+            binary_prefix_for_exe(Path::new("/usr/local/bin/deepseek-tui")),
+            "codewhale-tui"
+        );
+        assert_eq!(
+            binary_prefix_for_exe(Path::new("DeepSeek-TUI.exe")),
+            "codewhale-tui"
+        );
+        assert_eq!(binary_prefix_for_exe(Path::new("deepseek")), "codewhale");
+    }
+
+    #[test]
+    fn test_is_legacy_binary_detection() {
+        assert!(is_legacy_binary(Path::new("deepseek")));
+        assert!(is_legacy_binary(Path::new("deepseek-tui")));
+        assert!(is_legacy_binary(Path::new("/usr/local/bin/deepseek")));
+        assert!(is_legacy_binary(Path::new("/usr/local/bin/deepseek-tui")));
+        assert!(is_legacy_binary(Path::new("DeepSeek.exe")));
+        assert!(is_legacy_binary(Path::new("DeepSeek-TUI.exe")));
+        assert!(!is_legacy_binary(Path::new("codewhale")));
+        assert!(!is_legacy_binary(Path::new("codewhale-tui")));
+        assert!(!is_legacy_binary(Path::new("codew")));
+    }
+
+    #[test]
+    fn legacy_binary_message_gives_copy_pasteable_migration_steps() {
+        let message = legacy_binary_message(Path::new("/usr/local/bin/deepseek-tui"));
+
+        assert!(message.contains("legacy deepseek/deepseek-tui command name"));
+        assert!(message.contains("install canonical"));
+        assert!(message.contains("DeepSeek provider support"));
+        assert!(message.contains("is unchanged"));
+        assert!(message.contains("npm uninstall -g deepseek-tui"));
+        assert!(message.contains("npm install -g codewhale"));
+        assert!(message.contains("cargo uninstall deepseek-tui-cli 2>/dev/null || true"));
+        assert!(message.contains("cargo uninstall deepseek-tui 2>/dev/null || true"));
+        assert!(message.contains("cargo install codewhale-cli --locked"));
+        assert!(message.contains("cargo install codewhale-tui --locked"));
+        assert!(message.contains("brew upgrade deepseek-tui"));
+        assert!(message.contains("https://github.com/Hmbown/CodeWhale/releases/latest"));
+    }
+
+    #[test]
+    fn legacy_dispatcher_update_targets_canonical_codewhale_pair() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let dispatcher = dir
+            .path()
+            .join(format!("deepseek{}", std::env::consts::EXE_SUFFIX));
+        let tui = dir
+            .path()
+            .join(format!("deepseek-tui{}", std::env::consts::EXE_SUFFIX));
+        std::fs::write(&dispatcher, b"legacy dispatcher").unwrap();
+        std::fs::write(&tui, b"legacy tui").unwrap();
+
+        let targets = update_targets_for_exe(&dispatcher);
+        let paths = targets
+            .iter()
+            .map(|target| target.path.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            paths,
+            vec![
+                dir.path()
+                    .join(format!("codewhale{}", std::env::consts::EXE_SUFFIX)),
+                dir.path()
+                    .join(format!("codewhale-tui{}", std::env::consts::EXE_SUFFIX))
+            ]
+        );
+        assert!(targets[0].asset_stem.starts_with("codewhale-"));
+        assert!(targets[1].asset_stem.starts_with("codewhale-tui-"));
+    }
+
+    #[test]
+    fn legacy_tui_update_targets_canonical_tui_pair() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let dispatcher = dir
+            .path()
+            .join(format!("deepseek{}", std::env::consts::EXE_SUFFIX));
+        let tui = dir
+            .path()
+            .join(format!("deepseek-tui{}", std::env::consts::EXE_SUFFIX));
+        std::fs::write(&dispatcher, b"legacy dispatcher").unwrap();
+        std::fs::write(&tui, b"legacy tui").unwrap();
+
+        let targets = update_targets_for_exe(&tui);
+        let paths = targets
+            .iter()
+            .map(|target| target.path.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            paths,
+            vec![
+                dir.path()
+                    .join(format!("codewhale-tui{}", std::env::consts::EXE_SUFFIX)),
+                dir.path()
+                    .join(format!("codewhale{}", std::env::consts::EXE_SUFFIX))
+            ]
+        );
+        assert!(targets[0].asset_stem.starts_with("codewhale-tui-"));
+        assert!(targets[1].asset_stem.starts_with("codewhale-"));
     }
 
     #[test]
@@ -747,6 +1106,44 @@ mod tests {
             hash,
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
+    }
+
+    #[test]
+    fn glibc_version_parser_reads_getconf_and_symbol_text() {
+        assert_eq!(
+            parse_glibc_version("glibc 2.35\n"),
+            Some(GlibcVersion::new(2, 35, 0))
+        );
+        assert_eq!(
+            parse_glibc_version("requires GLIBC_2.39"),
+            Some(GlibcVersion::new(2, 39, 0))
+        );
+        assert_eq!(parse_glibc_version("not glibc"), None);
+    }
+
+    #[test]
+    fn highest_required_glibc_finds_highest_binary_symbol() {
+        let bytes = b"\0GLIBC_2.17\0other\0GLIBC_2.39\0GLIBC_2.35";
+
+        assert_eq!(
+            highest_required_glibc(bytes),
+            Some(GlibcVersion::new(2, 39, 0))
+        );
+    }
+
+    #[test]
+    fn glibc_compatibility_message_is_codewhale_branded_and_actionable() {
+        let message = glibc_compatibility_message(
+            "codewhale-linux-x64",
+            GlibcVersion::new(2, 39, 0),
+            Some(GlibcVersion::new(2, 35, 0)),
+        );
+
+        assert!(message.contains("Prebuilt CodeWhale asset `codewhale-linux-x64`"));
+        assert!(message.contains("requires GLIBC_2.39"));
+        assert!(message.contains("this system has glibc 2.35"));
+        assert!(message.contains("cargo install codewhale-cli --locked"));
+        assert!(message.contains("build Linux GNU assets against an older glibc"));
     }
 
     #[test]

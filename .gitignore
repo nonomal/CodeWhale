@@ -50,14 +50,11 @@ docs/*.pdf
 # Local dev scripts and temp files
 *.sh
 *.cmd
-!ohos-clang.sh
-!ohos-clangxx.sh
 !scripts/**
 !.github/scripts/**
 test.txt
 TODO*.md
 todo*.md
-CLAUDE.md
 AGENTS.md
 NEXT_SESSION.md
 AI_HANDOFF.md
@@ -82,6 +79,7 @@ npm/*/bin/downloads/
 apps/
 
 # Claude Code runtime artifacts
+.claude/settings.json
 .claude/scheduled_tasks.lock
 .claude/worktrees/
 .worktrees/
@@ -121,3 +119,10 @@ docs/*_PLAN.md
 .envrc
 .direnv
 scripts/run_deep_swe.py
+.claude/
+
+# Benchmark artifacts and caches re-included by !scripts/**
+results/
+benchmark_results/*
+!benchmark_results/.gitkeep
+scripts/**/__pycache__/

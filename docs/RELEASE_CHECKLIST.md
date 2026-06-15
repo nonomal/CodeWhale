@@ -31,17 +31,22 @@ not enumerate.
       if there is something material the user must work around.
 - [ ] The entry mentions all referenced issue/PR numbers as `#NNNN` so the
       auto-linker on GitHub picks them up.
+- [ ] Run `scripts/sync-changelog.sh` to regenerate `crates/tui/CHANGELOG.md`
+      (the recent-releases slice embedded in the binary for `/change`). Do
+      not edit that file by hand, and do not copy the full root changelog
+      into it — older entries live in `docs/CHANGELOG_ARCHIVE.md`.
 
 ## 2. Version pins are in sync
 
-- [ ] `Cargo.toml` workspace `version` is bumped.
-- [ ] All per-crate `crates/*/Cargo.toml` path-dependency `version = "..."`
-      pins match the new workspace version.
-- [ ] `npm/codewhale/package.json` `version` AND `codewhaleBinaryVersion`
-      are both bumped.
+- [ ] Run `./scripts/release/prepare-release.sh X.Y.Z` — it bumps the
+      workspace version, every per-crate dependency pin,
+      `npm/codewhale/package.json` (`version` + `codewhaleBinaryVersion`),
+      the README install-tag examples, refreshes `Cargo.lock`, regenerates
+      `crates/tui/CHANGELOG.md` and `web/lib/facts.generated.ts`, and ends
+      by running `check-versions.sh`. Write the CHANGELOG entry **before**
+      running it.
 - [ ] `npm/deepseek-tui/package.json` remains private/compatibility-only and
       is **not** bumped or published.
-- [ ] `Cargo.lock` is refreshed (`cargo update --workspace --offline`).
 - [ ] `./scripts/release/check-versions.sh` reports
       `Version state OK: workspace=X.Y.Z, npm=X.Y.Z, lockfile in sync.`
 - [ ] `./scripts/release/check-ohos-deps.sh` reports that the OpenHarmony
@@ -82,6 +87,46 @@ Run, in order, from the repo root:
 - [ ] PR title is **neutral** — do not put CVE-style language or specific
       attack details in the title. Save those for the GitHub release notes
       after the tag is pushed.
+
+## 5b. Branch hygiene (post-merge)
+
+After the release/integration merge lands, make it obvious where the release
+tip lives and clean up stale branches **safely**. A working checkout left on a
+scratch/renovate branch (even when `HEAD` already matches the tag) creates
+release anxiety: contributors cannot tell whether their work merged.
+
+- [ ] Run the dry-run report first (read-only, deletes nothing):
+
+      ```sh
+      ./scripts/release/branch-hygiene.sh --release-branch codex/vX.Y.Z
+      ```
+
+      It prints: the current checkout branch, the local + remote release tips,
+      and `origin/main`; the branches that are **safe to delete** (tip already
+      contained in `origin/main` or the release branch); and a **keep / needs
+      review** list naming each branch, its unique commit count, the author(s),
+      and the keep reason. The summary line reports how many are safe-deletes,
+      how many were kept for contributor work, and how many need a human
+      decision. A diverged local/remote release tip exits non-zero.
+- [ ] If the working checkout is parked on a stale branch, switch to the
+      release branch and fast-forward it:
+
+      ```sh
+      git switch codex/vX.Y.Z
+      git fetch origin && git merge --ff-only origin/codex/vX.Y.Z   # if behind
+      ```
+- [ ] Only after reviewing the dry-run, delete the **safe** branches. Local
+      first; add `--prune-remote` to also delete remote safe-deletes:
+
+      ```sh
+      ./scripts/release/branch-hygiene.sh --release-branch codex/vX.Y.Z --prune --yes
+      ```
+
+      The script **never** auto-deletes a branch with unique commits from a
+      contributor other than Hunter unless that work is already merged. Those
+      land in the keep/review list with author and reason; review, merge,
+      harvest with credit, or explicitly preserve them before removing the
+      branch. When in doubt, leave the branch and record the decision.
 
 ## 6. CI green and review
 

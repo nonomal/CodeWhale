@@ -37,6 +37,31 @@ currently bundled into the binary through `rusqlite` so users do not need a
 separate `libsqlite3` runtime package for official release assets. Musl-based
 systems such as Alpine should use [Build from source](#7-build-from-source).
 
+### Linux glibc floor
+
+The official Linux GNU release assets require the glibc version used by the
+release builder. In the current v0.8.61 release lane, native Linux GNU assets
+are built on Ubuntu 24.04 and can require `GLIBC_2.39`. Ubuntu 22.04 ships
+glibc 2.35, so those binaries fail with errors such as:
+
+```text
+version `GLIBC_2.39' not found
+```
+
+The npm wrapper, `codewhale update`, and the Unix archive installer preflight
+Linux binaries before installing them and point older systems to Cargo/source
+builds. If you are on Ubuntu 22.04, Debian stable, RHEL/CentOS, Alpine/musl, or
+another older Linux base, use:
+
+```bash
+cargo install codewhale-cli --locked
+cargo install codewhale-tui --locked
+```
+
+Release engineering follow-up: build Linux GNU assets against an older glibc
+baseline, or add a musl/static Linux asset. This install guide documents the
+floor and preflight behavior; it does not change CI runner selection.
+
 > **Linux ARM64 note (v0.8.7 and earlier).** v0.8.7 and earlier do **not**
 > publish a Linux ARM64 prebuilt; users on HarmonyOS thin-and-light, Asahi
 > Linux, Raspberry Pi, AWS Graviton, etc. saw `Unsupported architecture: arm64`
@@ -83,35 +108,33 @@ a download sourced from an impersonating repository or mirror.
 
 ---
 
-## 3. Install via npm (deferred for v0.8.54)
+## 3. Install via npm
 
-The `codewhale` npm wrapper for v0.8.54 is intentionally deferred while the
-release asset publication path is being hardened. Use Cargo, GitHub Releases,
-or CNB for v0.8.54. The notes below describe the npm wrapper behavior once a
-matching npm package is published.
+npm is the recommended install path. The `codewhale` wrapper is published at
+v0.8.61 (Node 18+; wrapper available for v0.8.56 and later).
 
 ```bash
-# Available only after the matching npm package is published.
 npm install -g codewhale
-codewhale
+codewhale --version   # 0.8.61
 ```
 
 `postinstall` downloads the right pair of binaries from the matching GitHub
-release, verifies a SHA-256 manifest, and exposes both `codewhale` and
+release, verifies a SHA-256 manifest, and exposes `codewhale`, `codew`, and
 `codewhale-tui` on your `PATH`.
 
 Useful environment variables:
 
 | Variable                            | Purpose                                                                                |
 | ----------------------------------- | -------------------------------------------------------------------------------------- |
-| `DEEPSEEK_TUI_VERSION`              | Pin which release the wrapper downloads (defaults to `deepseekBinaryVersion`)          |
+| `CODEWHALE_VERSION`                 | Pin which release the wrapper downloads (canonical)                                    |
+| `DEEPSEEK_TUI_VERSION`              | Legacy alias for `CODEWHALE_VERSION` (defaults to `codewhaleBinaryVersion`)            |
 | `DEEPSEEK_TUI_GITHUB_REPO`          | Point the downloader at a fork (`owner/repo`)                                          |
 | `DEEPSEEK_TUI_RELEASE_BASE_URL`     | Override the download root (e.g. an internal mirror or release-asset proxy)            |
 | `DEEPSEEK_TUI_FORCE_DOWNLOAD=1`     | Re-download even if a cached binary marker matches                                     |
 | `DEEPSEEK_TUI_DISABLE_INSTALL=1`    | Skip the `postinstall` download entirely (CI smoke, vendored binaries)                 |
 | `DEEPSEEK_TUI_OPTIONAL_INSTALL=1`   | Don't fail `npm install` on download/extract errors — useful in CI matrices            |
 
-> **Slow npm download from mainland China?** Once npm publication resumes, if `npm install` itself is slow
+> **Slow npm download from mainland China?** If `npm install` itself is slow
 > (not just the postinstall binary download), use an npm registry mirror:
 > ```bash
 > npm config set registry https://registry.npmmirror.com
@@ -259,7 +282,30 @@ Install into a NixOS module:
 
 ---
 
+## Homebrew (legacy tap)
+
+Homebrew currently ships only the legacy `deepseek-tui` tap, kept for
+compatibility while the formula is renamed to `codewhale`. It installs the
+same current-release binaries:
+
+```bash
+brew tap Hmbown/deepseek-tui
+brew install deepseek-tui
+```
+
+Update with `brew upgrade deepseek-tui`. There is no `codewhale` formula yet;
+once the rename lands, this section will switch to it.
+
+---
+
 ## 6. Manual download from GitHub Releases
+
+Each platform appears on the Releases page in **two forms** (this is intentional — see #3208):
+the **bare binaries** (`codewhale-<platform>` and `codewhale-tui-<platform>`, no extension) and a
+**`.tar.gz` / `.zip` archive** (`codewhale-<platform>.tar.gz`) that bundles the same two binaries
+plus an `install.sh`. The bare binaries are what the npm wrapper and the in-app `codewhale update`
+download; the archive is the easiest manual install (see §5). The steps below use the bare binaries
+directly.
 
 Grab the matching pair of binaries for your platform from the
 [Releases page](https://github.com/Hmbown/CodeWhale/releases) and drop them
@@ -519,9 +565,8 @@ cargo build --release
 Both binaries appear in `target\release\codewhale.exe` and
 `target\release\codewhale-tui.exe`.
 
-> For v0.8.54, prefer the GitHub Release installer/archive or the Cargo crates.
-> The npm wrapper path is deferred for this release while release asset
-> publication is hardened.
+> Prefer not to build? Install via npm, Cargo, GitHub Releases, or the CNB
+> mirror — see the sections above.
 
 ---
 
@@ -580,7 +625,7 @@ If you operate a binary asset mirror, `codewhale update` can use it directly:
 
 ```bash
 DEEPSEEK_TUI_VERSION=X.Y.Z \
-DEEPSEEK_TUI_RELEASE_BASE_URL=https://your-mirror.example.com/DeepSeek-TUI/vX.Y.Z/ \
+DEEPSEEK_TUI_RELEASE_BASE_URL=https://your-mirror.example.com/CodeWhale/vX.Y.Z/ \
 codewhale update
 ```
 
@@ -707,7 +752,7 @@ Use one of these paths:
 2. Mirror the release assets internally and set `DEEPSEEK_TUI_RELEASE_BASE_URL`:
 
    ```bash
-   export DEEPSEEK_TUI_RELEASE_BASE_URL=https://your-mirror.example.com/DeepSeek-TUI/
+   export DEEPSEEK_TUI_RELEASE_BASE_URL=https://your-mirror.example.com/CodeWhale/
    codewhale
    ```
 

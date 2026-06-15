@@ -1,6 +1,7 @@
 use super::*;
 
 use super::context::TURN_MAX_OUTPUT_TOKENS;
+use crate::config::ApiProvider;
 use crate::models::SystemBlock;
 use crate::test_support::lock_test_env;
 use crate::tools::plan::{PlanItemArg, PlanSnapshot, StepStatus};
@@ -17,6 +18,26 @@ use tempfile::tempdir;
 const WORKING_SET_SUMMARY_MARKER: &str = "## Repo Working Set";
 static CAPACITY_MEMORY_ENV_LOCK: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));
+
+fn assert_runtime_capabilities_omit_legacy_labels(text: &str) {
+    for banned in [
+        "<runtime_prompt",
+        "mode=\"",
+        "approval=\"",
+        "allow_shell=",
+        "Agent",
+        "Plan",
+        "YOLO",
+        "agent\"",
+        "plan\"",
+        "yolo\"",
+    ] {
+        assert!(
+            !text.contains(banned),
+            "runtime capability tag should omit legacy label {banned:?}: {text}"
+        );
+    }
+}
 
 struct ScopedCapacityMemoryDir {
     previous: Option<OsString>,
@@ -83,6 +104,45 @@ fn build_engine_with_capacity(capacity: CapacityControllerConfig) -> Engine {
     };
     let (engine, _handle) = Engine::new(engine_config, &Config::default());
     engine
+}
+
+fn catalog_tool(name: &str) -> Tool {
+    Tool {
+        tool_type: None,
+        name: name.to_string(),
+        description: String::new(),
+        input_schema: json!({"type": "object"}),
+        allowed_callers: None,
+        defer_loading: None,
+        input_examples: None,
+        strict: None,
+        cache_control: None,
+    }
+}
+
+#[test]
+fn tool_catalog_filter_applies_allow_and_deny_gates() {
+    // #3027 AC1: the advertised catalog must not contain tools the execution
+    // gates would deny; deny wins over allow.
+    let mut catalog = vec![
+        catalog_tool("read_file"),
+        catalog_tool("exec_shell"),
+        catalog_tool("grep_files"),
+    ];
+    filter_tool_catalog_for_gates(
+        &mut catalog,
+        Some(&["read_file".to_string(), "exec_shell".to_string()][..]),
+        Some(&["exec_shell".to_string()][..]),
+    );
+    let names: Vec<&str> = catalog.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["read_file"]);
+}
+
+#[test]
+fn tool_catalog_filter_is_inert_without_gates() {
+    let mut catalog = vec![catalog_tool("read_file"), catalog_tool("exec_shell")];
+    filter_tool_catalog_for_gates(&mut catalog, None, None);
+    assert_eq!(catalog.len(), 2);
 }
 
 #[test]
@@ -234,6 +294,7 @@ fn make_plan_at(
         approval_description: "desc".to_string(),
         supports_parallel,
         read_only,
+        detached_start: false,
         blocked_error: None,
         guard_result: None,
     }
@@ -296,6 +357,35 @@ fn engine_initial_prompt_includes_configured_goal() {
 }
 
 #[test]
+fn engine_initial_prompt_omits_paused_goal() {
+    let config = EngineConfig {
+        goal_objective: Some("Wait for confirmation".to_string()),
+        goal_status: GoalStatus::Paused,
+        ..Default::default()
+    };
+    let (engine, _handle) = Engine::new(config, &Config::default());
+    let prompt = match engine.session.system_prompt {
+        Some(SystemPrompt::Text(text)) => text,
+        Some(SystemPrompt::Blocks(blocks)) => blocks
+            .into_iter()
+            .map(|block| block.text)
+            .collect::<Vec<_>>()
+            .join("\n"),
+        None => panic!("expected system prompt"),
+    };
+
+    assert!(!prompt.contains("<session_goal>"));
+    assert!(
+        !engine
+            .config
+            .goal_state
+            .lock()
+            .expect("goal lock")
+            .is_active()
+    );
+}
+
+#[test]
 fn refresh_system_prompt_uses_runtime_goal_state() {
     let (mut engine, _handle) = Engine::new(EngineConfig::default(), &Config::default());
     {
@@ -316,6 +406,41 @@ fn refresh_system_prompt_uses_runtime_goal_state() {
 
     assert!(prompt.contains("<session_goal>"));
     assert!(prompt.contains("Close the runtime goal loop"));
+}
+
+#[tokio::test]
+async fn runtime_goal_updates_emit_ui_snapshot() {
+    let (engine, handle) = Engine::new(EngineConfig::default(), &Config::default());
+    {
+        let mut goal = engine.config.goal_state.lock().expect("goal lock");
+        goal.create("Ship the release lane".to_string(), Some(42_000));
+        goal.mark_complete(
+            "verified with focused tests".to_string(),
+            crate::tools::goal::GoalCompletionVerification {
+                status: "passed".to_string(),
+                check: "cargo test -p codewhale-tui runtime_goal_updates_emit_ui_snapshot"
+                    .to_string(),
+                summary: "focused runtime goal snapshot test passed".to_string(),
+            },
+        )
+        .expect("mark complete");
+    }
+
+    engine.emit_goal_updated().await;
+
+    let mut rx = handle.rx_event.write().await;
+    match rx.recv().await.expect("goal update event") {
+        Event::GoalUpdated { snapshot } => {
+            assert_eq!(snapshot.objective.as_deref(), Some("Ship the release lane"));
+            assert_eq!(snapshot.status, "complete");
+            assert_eq!(snapshot.token_budget, Some(42_000));
+            assert_eq!(
+                snapshot.evidence.as_deref(),
+                Some("verified with focused tests")
+            );
+        }
+        other => panic!("expected GoalUpdated, got {other:?}"),
+    }
 }
 
 #[test]
@@ -340,6 +465,14 @@ fn parallel_batch_requires_read_only_parallel_tools() {
 
     let plans = vec![make_plan(true, true, false, true)];
     assert!(!should_parallelize_tool_batch(&plans));
+
+    let mut background = make_plan(false, false, false, false);
+    background.detached_start = true;
+    assert!(should_parallelize_tool_batch(&[background]));
+
+    let mut gated_background = make_plan(false, false, true, false);
+    gated_background.detached_start = true;
+    assert!(!should_parallelize_tool_batch(&[gated_background]));
 }
 
 #[test]
@@ -390,6 +523,110 @@ fn tool_execution_batches_use_serial_barriers() {
             );
         }
         ToolExecutionBatch::Serial(_) => panic!("fifth batch should be parallel"),
+    }
+}
+
+#[test]
+fn shell_readonly_plans_batch_around_serial_barrier() {
+    let mut shell_a = make_plan_at(0, true, true, false, false);
+    shell_a.name = "exec_shell".to_string();
+    shell_a.input = json!({"command": "git status -s"});
+    let mut shell_b = make_plan_at(1, true, true, false, false);
+    shell_b.name = "exec_shell".to_string();
+    shell_b.input = json!({"command": "git log --oneline -5"});
+    let mut write_shell = make_plan_at(2, false, false, true, false);
+    write_shell.name = "exec_shell".to_string();
+    write_shell.input = json!({"command": "cargo build"});
+    let mut shell_c = make_plan_at(3, true, true, false, false);
+    shell_c.name = "exec_shell".to_string();
+    shell_c.input = json!({"command": "bash -lc 'rg TODO crates/tui/src/core'"});
+
+    let batches = plan_tool_execution_batches(vec![shell_a, shell_b, write_shell, shell_c]);
+    assert_eq!(batches.len(), 3);
+
+    match &batches[0] {
+        ToolExecutionBatch::Parallel(plans) => {
+            assert_eq!(
+                plans.iter().map(|plan| plan.index).collect::<Vec<_>>(),
+                vec![0, 1]
+            );
+        }
+        ToolExecutionBatch::Serial(_) => panic!("first batch should be parallel"),
+    }
+    match &batches[1] {
+        ToolExecutionBatch::Serial(plan) => assert_eq!(plan.index, 2),
+        ToolExecutionBatch::Parallel(_) => panic!("write shell should be a serial barrier"),
+    }
+    match &batches[2] {
+        ToolExecutionBatch::Parallel(plans) => {
+            assert_eq!(
+                plans.iter().map(|plan| plan.index).collect::<Vec<_>>(),
+                vec![3]
+            );
+        }
+        ToolExecutionBatch::Serial(_) => panic!("third batch should be parallel"),
+    }
+}
+
+#[test]
+fn background_shell_starts_batch_with_readonly_tools_when_auto_approved() {
+    let mut shell_a = make_plan_at(0, true, true, false, false);
+    shell_a.name = "exec_shell".to_string();
+    shell_a.input = json!({"command": "git status -s"});
+
+    let mut background_cargo = make_plan_at(1, false, false, false, false);
+    background_cargo.name = "exec_shell".to_string();
+    background_cargo.input = json!({"command": "cargo check --workspace", "background": true});
+    background_cargo.detached_start = true;
+
+    let mut shell_b = make_plan_at(2, true, true, false, false);
+    shell_b.name = "exec_shell".to_string();
+    shell_b.input = json!({"command": "rg TODO crates/tui/src/core"});
+
+    let batches = plan_tool_execution_batches(vec![shell_a, background_cargo, shell_b]);
+    assert_eq!(batches.len(), 1);
+
+    match &batches[0] {
+        ToolExecutionBatch::Parallel(plans) => {
+            assert_eq!(
+                plans.iter().map(|plan| plan.index).collect::<Vec<_>>(),
+                vec![0, 1, 2]
+            );
+        }
+        ToolExecutionBatch::Serial(_) => {
+            panic!("background shell start should join parallel batch")
+        }
+    }
+}
+
+#[test]
+fn background_verifier_starts_batch_with_readonly_tools_when_auto_approved() {
+    let mut shell_a = make_plan_at(0, true, true, false, false);
+    shell_a.name = "exec_shell".to_string();
+    shell_a.input = json!({"command": "git status -s"});
+
+    let mut verifier = make_plan_at(1, false, false, false, false);
+    verifier.name = "run_verifiers".to_string();
+    verifier.input = json!({"profile": "rust", "level": "full", "background": true});
+    verifier.detached_start = true;
+
+    let mut shell_b = make_plan_at(2, true, true, false, false);
+    shell_b.name = "exec_shell".to_string();
+    shell_b.input = json!({"command": "rg TODO crates/tui/src/core"});
+
+    let batches = plan_tool_execution_batches(vec![shell_a, verifier, shell_b]);
+    assert_eq!(batches.len(), 1);
+
+    match &batches[0] {
+        ToolExecutionBatch::Parallel(plans) => {
+            assert_eq!(
+                plans.iter().map(|plan| plan.index).collect::<Vec<_>>(),
+                vec![0, 1, 2]
+            );
+        }
+        ToolExecutionBatch::Serial(_) => {
+            panic!("background verifier start should join parallel batch")
+        }
     }
 }
 
@@ -486,6 +723,33 @@ fn tool_error_messages_include_actionable_hints() {
     let timeout = ToolError::Timeout { seconds: 5 };
     let formatted = format_tool_error(&timeout, "exec_shell");
     assert!(formatted.contains("timed out"));
+
+    // #3020: Plan-mode denials already explain the fix — pass through
+    // verbatim, with no conflicting "Adjust approval mode" suffix.
+    let plan_denied = ToolError::permission_denied(
+        "'exec_shell' is not available in Plan mode — switch to Agent or YOLO mode to run commands and code.",
+    );
+    let formatted = format_tool_error(&plan_denied, "exec_shell");
+    assert_eq!(
+        formatted,
+        "'exec_shell' is not available in Plan mode — switch to Agent or YOLO mode to run commands and code."
+    );
+
+    // Bare denials still get the actionable suffix.
+    let bare_denied = ToolError::permission_denied("nope");
+    let formatted = format_tool_error(&bare_denied, "exec_shell");
+    assert!(
+        formatted.contains("Adjust approval mode or request permission"),
+        "{formatted}"
+    );
+
+    // "model" must not satisfy the "mode" pass-through check.
+    let model_denied = ToolError::permission_denied("requested model is not allowed");
+    let formatted = format_tool_error(&model_denied, "agent_open");
+    assert!(
+        formatted.contains("Adjust approval mode or request permission"),
+        "{formatted}"
+    );
 }
 
 #[test]
@@ -1507,6 +1771,42 @@ fn agent_mode_can_build_auto_approved_tool_context() {
 }
 
 #[test]
+fn build_tool_context_uses_typed_shell_policy_per_mode() {
+    let mut config = EngineConfig {
+        allow_shell: true,
+        ..EngineConfig::default()
+    };
+    let (engine, _handle) = Engine::new(config.clone(), &Config::default());
+
+    // Plan mode is shell-free: the runtime prompt reports
+    // `shell_access="none"`, so the typed policy must agree and expose no
+    // shell tools (switch to Agent to run commands). See `shell_policy_for_mode`.
+    assert_eq!(
+        engine.build_tool_context(AppMode::Plan, false).shell_policy,
+        crate::worker_profile::ShellPolicy::None
+    );
+    assert_eq!(
+        engine
+            .build_tool_context(AppMode::Agent, false)
+            .shell_policy,
+        crate::worker_profile::ShellPolicy::Full
+    );
+    assert_eq!(
+        engine.build_tool_context(AppMode::Yolo, false).shell_policy,
+        crate::worker_profile::ShellPolicy::Full
+    );
+
+    config.allow_shell = false;
+    let (engine, _handle) = Engine::new(config, &Config::default());
+    assert_eq!(
+        engine
+            .build_tool_context(AppMode::Agent, false)
+            .shell_policy,
+        crate::worker_profile::ShellPolicy::None
+    );
+}
+
+#[test]
 fn agent_and_yolo_modes_elevate_shell_sandbox_to_allow_network() {
     // Regression for #273: the seatbelt-default policy denies all outbound
     // network (including DNS), which broke `curl`, `yt-dlp`, package managers,
@@ -1614,6 +1914,7 @@ async fn session_update_preserves_reasoning_tool_only_turn() {
         role: "assistant".to_string(),
         content: vec![
             ContentBlock::Thinking {
+                signature: None,
                 thinking: "Need a tool before answering.".to_string(),
             },
             ContentBlock::ToolUse {
@@ -1748,7 +2049,7 @@ async fn change_mode_refreshes_session_prompt_and_updates_session() {
                 !matches!(
                     block,
                     ContentBlock::Text { text, .. }
-                        if text.contains("<runtime_prompt")
+                        if text.contains("<cw_runtime_capabilities")
                 )
             })
         }),
@@ -1799,12 +2100,13 @@ fn runtime_prompt_is_projected_without_persisting_to_session_messages() {
             text: "summary after compaction".to_string(),
             cache_control: None,
         }],
-    }];
+    }]
+    .into();
     let stored = engine.session.messages.clone();
 
     let request_messages = engine.messages_with_turn_metadata();
 
-    assert_eq!(engine.session.messages, stored);
+    assert_eq!(&*engine.session.messages, &*stored);
     assert_eq!(request_messages.len(), stored.len() + 1);
     assert!(
         request_messages
@@ -1818,12 +2120,15 @@ fn runtime_prompt_is_projected_without_persisting_to_session_messages() {
     else {
         panic!("expected text runtime prompt");
     };
-    assert!(text.contains("<runtime_prompt"));
-    assert!(text.contains("mode=\"plan\""));
+    assert!(text.contains("<cw_runtime_capabilities"));
+    assert!(text.contains("tool_profile=\"read_only\""));
+    assert!(text.contains("write_access=\"none\""));
+    assert!(text.contains("shell_access=\"none\""));
     assert!(
-        text.contains("approval=\"never\""),
-        "Plan mode should project its fixed never-approval policy: {text}"
+        text.contains("approval_gate=\"blocked\""),
+        "read-only posture should project its fixed blocked review gate: {text}"
     );
+    assert_runtime_capabilities_omit_legacy_labels(text);
 }
 
 #[tokio::test]
@@ -1844,9 +2149,9 @@ async fn change_mode_op_updates_current_mode_and_emits_status() {
         .await
         .expect("send change mode");
 
-    // Expect a SessionUpdated event confirming the mode change (the
-    // per-turn <runtime_prompt> tag carries the mode in every request,
-    // so no separate persistence of a mode_change runtime event is needed).
+    // Expect a SessionUpdated event confirming the mode change. The per-turn
+    // capability tag carries the effective runtime posture in every request, so
+    // no separate persistence of a mode_change runtime event is needed.
     let mut rx = handle.rx_event.write().await;
     let session_updated = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
         .await
@@ -1861,7 +2166,7 @@ async fn change_mode_op_updates_current_mode_and_emits_status() {
                 !matches!(
                     block,
                     ContentBlock::Text { text, .. }
-                        if text.contains("<runtime_prompt")
+                        if text.contains("<cw_runtime_capabilities")
                 )
             })
         }),
@@ -1897,11 +2202,47 @@ fn context_budget_reserves_output_and_headroom() {
     let _lock = lock_test_env();
     // V4 has a 1M context window — the only family that comfortably hosts
     // a 256K output reservation without saturating the input budget to 0.
-    let budget = context_input_budget("deepseek-v4-pro")
+    let budget = context_input_budget_for_provider(ApiProvider::Deepseek, "deepseek-v4-pro")
         .expect("deepseek-v4-pro should have a known context window");
     let v4_window: usize = 1_000_000;
     let expected = v4_window - (TURN_MAX_OUTPUT_TOKENS as usize) - 1_024usize;
     assert_eq!(budget, expected);
+}
+
+#[test]
+fn context_budget_uses_conservative_fallback_for_unknown_models() {
+    let _lock = lock_test_env();
+    let budget = context_input_budget_for_provider(ApiProvider::Openai, "auto")
+        .expect("unknown/auto model ids should still get a conservative hard preflight budget");
+    let expected = 128_000usize - effective_max_output_tokens("auto") as usize - 1_024usize;
+    assert_eq!(budget, expected);
+}
+
+#[test]
+fn context_budget_uses_provider_effective_window_for_openai_codex() {
+    let _lock = lock_test_env();
+    let budget = context_input_budget_for_provider(ApiProvider::OpenaiCodex, "gpt-5.5")
+        .expect("OpenAI Codex should use the route-effective context window");
+    let expected = 400_000usize - effective_max_output_tokens("gpt-5.5") as usize - 1_024usize;
+    assert_eq!(budget, expected);
+}
+
+#[test]
+fn route_context_budget_uses_shared_budget_service() {
+    let _lock = lock_test_env();
+    let budget = route_context_budget_for_provider(ApiProvider::OpenaiCodex, "gpt-5.5", 380_000)
+        .expect("OpenAI Codex should produce a route budget");
+
+    assert_eq!(budget.window_tokens, 400_000);
+    assert_eq!(
+        budget.output_cap_tokens,
+        u64::from(effective_max_output_tokens("gpt-5.5"))
+    );
+    assert_eq!(
+        budget.pressure,
+        crate::context_budget::PressureLevel::Critical
+    );
+    assert!(!budget.fits_additional(1));
 }
 
 #[test]
@@ -2007,7 +2348,8 @@ fn internal_context_budget_tiers_reserved_output_by_window() {
     // Large-context (>=500K) models reserve the full TURN_MAX_OUTPUT_TOKENS
     // headroom so long V4 sessions don't compact prematurely.
     let internal_budget =
-        context_input_budget("deepseek-v4-pro").expect("V4 should have a known context window");
+        context_input_budget_for_provider(ApiProvider::Deepseek, "deepseek-v4-pro")
+            .expect("V4 should have a known context window");
     let v4_window: usize = 1_000_000;
     let expected_internal = v4_window - (TURN_MAX_OUTPUT_TOKENS as usize) - 1_024usize;
     assert_eq!(internal_budget, expected_internal);
@@ -2016,8 +2358,9 @@ fn internal_context_budget_tiers_reserved_output_by_window() {
     // deployment must yield a usable positive budget rather than None. The
     // previous formula reserved the full 262K and computed 256K - 262K - 1K,
     // which underflowed to None and silently disabled preflight/recovery.
-    let small_window_budget = context_input_budget("qwen3-32b-256k")
-        .expect("a 256K-suffix model must yield Some budget via the effective-cap branch");
+    let small_window_budget =
+        context_input_budget_for_provider(ApiProvider::Openai, "qwen3-32b-256k")
+            .expect("a 256K-suffix model must yield Some budget via the effective-cap branch");
     let effective_output = effective_max_output_tokens("qwen3-32b-256k") as usize;
     let expected_small = 256_000 - effective_output - 1_024;
     assert_eq!(small_window_budget, expected_small);
@@ -2306,7 +2649,6 @@ fn turn_metadata_includes_auto_model_route() {
 
     let user_msg = engine.user_text_message_with_turn_metadata_for_route(
         "debug this regression".to_string(),
-        AppMode::Agent,
         "deepseek-v4-pro",
         true,
         Some("max"),
@@ -2324,7 +2666,7 @@ fn turn_metadata_includes_auto_model_route() {
 }
 
 #[test]
-fn turn_metadata_includes_current_mode() {
+fn turn_metadata_omits_mode_policy() {
     let tmp = tempdir().expect("tempdir");
     let config = EngineConfig {
         workspace: tmp.path().to_path_buf(),
@@ -2334,7 +2676,6 @@ fn turn_metadata_includes_current_mode() {
 
     let user_msg = engine.user_text_message_with_turn_metadata_for_route(
         "test mode metadata".to_string(),
-        AppMode::Yolo,
         "deepseek-v4-flash",
         false,
         None,
@@ -2349,13 +2690,13 @@ fn turn_metadata_includes_current_mode() {
     };
 
     assert!(
-        text.contains("Current mode: YOLO mode - full tool access without approvals"),
-        "turn metadata should include the current mode label, got: {text}"
+        !text.contains("Current mode:"),
+        "turn metadata should leave runtime policy to the capability tag, got: {text}"
     );
 }
 
 #[test]
-fn turn_metadata_mode_updates_with_change_mode_op() {
+fn runtime_prompt_capabilities_update_with_change_mode_op() {
     let tmp = tempdir().expect("tempdir");
     let config = EngineConfig {
         workspace: tmp.path().to_path_buf(),
@@ -2363,35 +2704,49 @@ fn turn_metadata_mode_updates_with_change_mode_op() {
     };
     let (mut engine, _handle) = Engine::new(config, &Config::default());
 
-    // In agent mode by default. The turn_meta block now sits at the
-    // *tail* of the user message (see #2517) so we read `content.last()`.
-    let msg = engine.user_text_message_with_turn_metadata("hello".to_string());
-    let last_block = msg.content.last().expect("turn metadata block");
-    let ContentBlock::Text { text, .. } = last_block else {
-        panic!("expected text metadata block");
+    let workspace_msg = engine.runtime_prompt_message();
+    let ContentBlock::Text {
+        text: workspace_text,
+        ..
+    } = workspace_msg.content.first().expect("runtime prompt block")
+    else {
+        panic!("expected text runtime prompt");
     };
+    assert!(workspace_text.contains("<cw_runtime_capabilities"));
     assert!(
-        text.contains("Agent mode"),
-        "initial mode should be Agent, got: {text}"
+        workspace_text.contains("tool_profile=\"workspace_write\""),
+        "initial posture should allow workspace writes, got: {workspace_text}"
     );
+    assert!(workspace_text.contains("write_access=\"workspace\""));
+    assert_runtime_capabilities_omit_legacy_labels(workspace_text);
 
-    // Switch to YOLO — user_text_message_with_turn_metadata should reflect the new mode
+    // Switch to full access. runtime_prompt_message should reflect capabilities,
+    // not the UI mode label.
     engine.current_mode = AppMode::Yolo;
-    let msg = engine.user_text_message_with_turn_metadata("hello again".to_string());
-    let last_block = msg.content.last().expect("turn metadata block");
-    let ContentBlock::Text { text, .. } = last_block else {
-        panic!("expected text metadata block");
+    let full_access_msg = engine.runtime_prompt_message();
+    let ContentBlock::Text {
+        text: full_access_text,
+        ..
+    } = full_access_msg
+        .content
+        .first()
+        .expect("runtime prompt block")
+    else {
+        panic!("expected text runtime prompt");
     };
     assert!(
-        text.contains("YOLO mode"),
-        "mode after change should be YOLO, got: {text}"
+        full_access_text.contains("tool_profile=\"full_access\""),
+        "posture after change should allow full access, got: {full_access_text}"
     );
+    assert!(full_access_text.contains("write_access=\"full_disk\""));
+    assert!(full_access_text.contains("approval_gate=\"preapproved\""));
+    assert_runtime_capabilities_omit_legacy_labels(full_access_text);
 }
 
 #[test]
 fn current_mode_field_assignment_takes_effect_synchronously() {
     // Basic unit-level invariant: the current_mode field mutates as expected
-    // and the per-turn <runtime_prompt> tag reflects the current mode.
+    // and the per-turn capability tag reflects the current runtime posture.
     // Op::ChangeMode dispatch through the run loop is exercised by the
     // integration test change_mode_op_updates_current_mode_and_emits_status.
     let tmp = tempdir().expect("tempdir");
@@ -2403,41 +2758,45 @@ fn current_mode_field_assignment_takes_effect_synchronously() {
     let (mut engine, _handle) = Engine::new(config, &Config::default());
     assert_eq!(engine.current_mode, AppMode::Agent);
 
-    // Verify runtime tag in Agent mode
-    let agent_messages = engine.messages_with_turn_metadata();
-    let agent_tag = agent_messages.last().expect("runtime tag message");
+    // Verify runtime tag in the initial workspace-write posture.
+    let workspace_messages = engine.messages_with_turn_metadata();
+    let workspace_tag = workspace_messages.last().expect("runtime tag message");
     let ContentBlock::Text {
-        text: agent_text, ..
-    } = agent_tag.content.first().expect("text block")
+        text: workspace_text,
+        ..
+    } = workspace_tag.content.first().expect("text block")
     else {
-        panic!("expected text runtime tag in Agent mode");
+        panic!("expected text runtime tag in workspace-write posture");
     };
     assert!(
-        agent_text.contains("mode=\"agent\""),
-        "Agent mode should produce runtime tag with mode=\"agent\", got: {agent_text}"
+        workspace_text.contains("tool_profile=\"workspace_write\""),
+        "workspace-write posture should produce matching runtime tag, got: {workspace_text}"
     );
+    assert_runtime_capabilities_omit_legacy_labels(workspace_text);
 
-    // Switch to YOLO
+    // Switch to full access.
     engine.current_mode = AppMode::Yolo;
     assert_eq!(engine.current_mode, AppMode::Yolo);
 
-    // Verify runtime tag reflects the YOLO mode with auto approval
-    let yolo_messages = engine.messages_with_turn_metadata();
-    let yolo_tag = yolo_messages.last().expect("runtime tag message");
+    // Verify runtime tag reflects full access with a preapproved review gate.
+    let full_access_messages = engine.messages_with_turn_metadata();
+    let full_access_tag = full_access_messages.last().expect("runtime tag message");
     let ContentBlock::Text {
-        text: yolo_text, ..
-    } = yolo_tag.content.first().expect("text block")
+        text: full_access_text,
+        ..
+    } = full_access_tag.content.first().expect("text block")
     else {
-        panic!("expected text runtime tag in YOLO mode");
+        panic!("expected text runtime tag in full-access posture");
     };
     assert!(
-        yolo_text.contains("mode=\"yolo\""),
-        "YOLO mode should produce runtime tag with mode=\"yolo\", got: {yolo_text}"
+        full_access_text.contains("tool_profile=\"full_access\""),
+        "full-access posture should produce matching runtime tag, got: {full_access_text}"
     );
     assert!(
-        yolo_text.contains("approval=\"auto\""),
-        "YOLO mode should project auto approval in runtime tag, got: {yolo_text}"
+        full_access_text.contains("approval_gate=\"preapproved\""),
+        "full-access posture should project preapproved review gate, got: {full_access_text}"
     );
+    assert_runtime_capabilities_omit_legacy_labels(full_access_text);
 }
 
 #[test]
@@ -2488,7 +2847,7 @@ fn messages_with_turn_metadata_preserves_stored_messages_for_prefix_cache() {
     let first_request = engine.messages_with_turn_metadata();
     assert_eq!(
         &first_request[..engine.session.messages.len()],
-        engine.session.messages.as_slice()
+        &engine.session.messages[..]
     );
     assert_eq!(first_request.len(), engine.session.messages.len() + 1);
     assert_eq!(first_request.first(), Some(&first_user));
@@ -2514,7 +2873,7 @@ fn messages_with_turn_metadata_preserves_stored_messages_for_prefix_cache() {
     let second_request = engine.messages_with_turn_metadata();
     assert_eq!(
         &second_request[..engine.session.messages.len()],
-        engine.session.messages.as_slice()
+        &engine.session.messages[..]
     );
     assert_eq!(second_request.len(), engine.session.messages.len() + 1);
     assert_eq!(second_request.first(), Some(&first_user));
@@ -2523,7 +2882,8 @@ fn messages_with_turn_metadata_preserves_stored_messages_for_prefix_cache() {
     else {
         panic!("expected runtime prompt text");
     };
-    assert!(text.contains("<runtime_prompt"));
+    assert!(text.contains("<cw_runtime_capabilities"));
+    assert_runtime_capabilities_omit_legacy_labels(text);
 }
 
 /// v0.8.11 regression: tool-result messages serialize to role="tool" on
@@ -2602,7 +2962,7 @@ fn turn_metadata_skips_tool_result_messages() {
     assert!(
         matches!(
             messages.last().and_then(|message| message.content.first()),
-            Some(ContentBlock::Text { text, .. }) if text.contains("<runtime_prompt")
+            Some(ContentBlock::Text { text, .. }) if text.contains("<cw_runtime_capabilities")
         ),
         "request projection should append transient runtime metadata"
     );
@@ -2693,7 +3053,7 @@ fn turn_metadata_skips_when_only_tool_results_trail() {
     assert!(
         matches!(
             messages.last().and_then(|message| message.content.first()),
-            Some(ContentBlock::Text { text, .. }) if text.contains("<runtime_prompt")
+            Some(ContentBlock::Text { text, .. }) if text.contains("<cw_runtime_capabilities")
         ),
         "request projection should still append transient runtime metadata"
     );
@@ -2861,6 +3221,33 @@ async fn pre_request_refresh_skips_compaction_below_normal_threshold() {
     assert!(!applied);
     assert_eq!(after, before);
     assert_eq!(engine.session.messages.len(), before_len);
+}
+
+#[test]
+fn capacity_observation_uses_bare_kimi_context_window() {
+    // #3023: capacity math reads models::context_window_for_model directly,
+    // so bare Moonshot ids must resolve their real window, not the 128K
+    // legacy fallback.
+    let mut engine = build_engine_with_capacity(CapacityControllerConfig::default());
+    engine.session.model = "kimi-k2.6".to_string();
+    engine.session.messages.push(Message {
+        role: "user".to_string(),
+        content: vec![ContentBlock::Text {
+            text: "x".repeat(40_000),
+            cache_control: None,
+        }],
+    });
+
+    let estimated = engine.estimated_input_tokens() as f64;
+    let turn = TurnContext::new(1);
+    let observation = engine.capacity_observation(&turn);
+
+    let expected = estimated / 262_144.0;
+    assert!(
+        (observation.context_used_ratio - expected).abs() < 1e-9,
+        "context_used_ratio must use kimi-k2.6's 262,144-token window (got {})",
+        observation.context_used_ratio
+    );
 }
 
 #[tokio::test]
@@ -3698,6 +4085,71 @@ fn stream_retry_respects_cancellation() {
     assert!(
         !super::should_transparently_retry_stream(false, 1, true),
         "cancelled turn must not be transparently retried even with budget"
+    );
+}
+
+// === #2990 sleep-resume policy ================================================
+
+#[test]
+fn sleep_gap_requires_wallclock_to_outrun_monotonic_clock() {
+    use std::time::Duration;
+    // No divergence: ordinary network failure, clocks agree.
+    assert!(
+        !super::sleep_gap_detected(Duration::from_secs(30), Duration::from_secs(30)),
+        "equal elapsed times must not register as a sleep gap"
+    );
+    // Divergence below the threshold: NTP slew / scheduling jitter.
+    assert!(
+        !super::sleep_gap_detected(Duration::from_secs(5), Duration::from_secs(14)),
+        "9s of divergence is below the 10s threshold"
+    );
+    // Divergence above the threshold: the host was suspended.
+    assert!(
+        super::sleep_gap_detected(Duration::from_secs(5), Duration::from_secs(16)),
+        "11s of divergence must register as a sleep gap"
+    );
+    // Wall clock went backwards (NTP step): saturating_sub → zero gap.
+    assert!(
+        !super::sleep_gap_detected(Duration::from_secs(60), Duration::from_secs(5)),
+        "wall clock behind monotonic must never register as a sleep gap"
+    );
+}
+
+#[test]
+fn sleep_resume_retries_even_after_content_streamed() {
+    // The whole point of #2990: unlike the #103 transparent retry, a
+    // detected sleep gap retries regardless of streamed content — the
+    // partial output predates the sleep and the user was not watching.
+    assert!(
+        super::should_resume_after_sleep(true, 0, false),
+        "detected sleep with full budget must resume"
+    );
+    assert!(
+        super::should_resume_after_sleep(true, super::MAX_STREAM_RETRIES - 1, false),
+        "detected sleep one short of the budget must still resume"
+    );
+}
+
+#[test]
+fn sleep_resume_requires_a_detected_gap() {
+    // Without a sleep gap this layer stays out of the way entirely, so the
+    // deliberate no-retry-after-content policy for ordinary flakes (#103)
+    // is preserved.
+    assert!(
+        !super::should_resume_after_sleep(false, 0, false),
+        "no sleep gap → never resume via this layer"
+    );
+}
+
+#[test]
+fn sleep_resume_respects_budget_and_cancellation() {
+    assert!(
+        !super::should_resume_after_sleep(true, super::MAX_STREAM_RETRIES, false),
+        "budget exhausted → surface the failure instead of looping"
+    );
+    assert!(
+        !super::should_resume_after_sleep(true, 0, true),
+        "cancelled turn must not be resumed behind the user's back"
     );
 }
 

@@ -143,7 +143,7 @@ reuses the existing `ignore`/`WalkBuilder` path.
 
 **Dependencies.** rusqlite/FTS5; the Intent Router (§1) for the
 `codebase_search` verb; the trace store (§6/§8) for history retrieval. **Full
-design lives in `docs/CODEBASE_SEARCH_DESIGN.md`** (to be written this cycle).
+design lives in `docs/rfcs/CODEBASE_SEARCH_DESIGN.md`** (to be written this cycle).
 
 ---
 
@@ -281,7 +281,7 @@ clearable, and scoped**:
 6. **Cached-main overlay** — promoted lessons from the cached main branch
    (`/overlay`, §9).
 7. **External memory (Aleph)** — large local data via the `aleph` skill;
-   see `docs/WHALEFLOW_EXTERNAL_MEMORY.md` for the v0.9.0 cutline that keeps
+   see `docs/rfcs/WHALEFLOW_EXTERNAL_MEMORY.md` for the v0.9.0 cutline that keeps
    this optional, explicit, inspectable, and out of the default path.
 
 **Why it helps weaker models.** The model never has to *guess* where a fact
@@ -458,7 +458,7 @@ cycle):
   active + actionable RLM/field errors). Subagent legacy-name cleanup +
   guardrail tests rebased on #2684.
 - **Docs:** this north star, plus `docs/TOOL_LIFECYCLE.md`,
-  `docs/CODEBASE_SEARCH_DESIGN.md`, `docs/SKILL_INVOCATION_DESIGN.md`.
+  `docs/rfcs/CODEBASE_SEARCH_DESIGN.md`, `docs/SKILL_INVOCATION_DESIGN.md`.
 - **No tool-catalog code:** the diet (§3), the Intent Router (§1), and the
   hybrid index (§2) are **documented, not coded** this cycle.
 

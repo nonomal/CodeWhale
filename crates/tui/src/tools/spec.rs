@@ -21,6 +21,7 @@ use crate::rlm::session::{SharedRlmSessionStore, new_shared_rlm_session_store};
 use crate::sandbox::backend::SandboxBackend;
 use crate::tools::handle::{SharedHandleStore, new_shared_handle_store};
 use crate::tools::shell::{SharedShellManager, new_shared_shell_manager};
+use crate::worker_profile::ShellPolicy;
 #[allow(unused_imports)]
 pub use codewhale_tools::{
     ApprovalRequirement, ToolCapability, ToolError, ToolResult, optional_bool, optional_str,
@@ -118,6 +119,8 @@ pub struct ToolContext {
     /// Whether tools should auto-approve without safety checks (YOLO mode).
     /// When true, command safety analysis is skipped for shell execution.
     pub auto_approve: bool,
+    /// Effective shell policy for this execution context.
+    pub shell_policy: ShellPolicy,
     /// Effective feature flag set for the running session.
     pub features: Features,
     /// Namespace for tool state that should be scoped to the current session/thread.
@@ -199,6 +202,7 @@ impl ToolContext {
             elevated_sandbox_policy: None,
             shell_network_denied_hint: None,
             auto_approve: false,
+            shell_policy: ShellPolicy::Full,
             features: Features::with_defaults(),
             state_namespace: "workspace".to_string(),
             trusted_external_paths: Vec::new(),
@@ -237,6 +241,7 @@ impl ToolContext {
             elevated_sandbox_policy: None,
             shell_network_denied_hint: None,
             auto_approve: false,
+            shell_policy: ShellPolicy::Full,
             features: Features::with_defaults(),
             state_namespace: "workspace".to_string(),
             trusted_external_paths: Vec::new(),
@@ -275,6 +280,7 @@ impl ToolContext {
             elevated_sandbox_policy: None,
             shell_network_denied_hint: None,
             auto_approve,
+            shell_policy: ShellPolicy::Full,
             features: Features::with_defaults(),
             state_namespace: "workspace".to_string(),
             trusted_external_paths: Vec::new(),
@@ -318,6 +324,13 @@ impl ToolContext {
     #[must_use]
     pub fn with_cancel_token(mut self, cancel_token: CancellationToken) -> Self {
         self.cancel_token = Some(cancel_token);
+        self
+    }
+
+    /// Attach the effective shell policy for this turn.
+    #[must_use]
+    pub fn with_shell_policy(mut self, policy: ShellPolicy) -> Self {
+        self.shell_policy = policy;
         self
     }
 
@@ -643,6 +656,11 @@ pub trait ToolSpec: Send + Sync {
         }
     }
 
+    /// Returns the approval requirement for this concrete tool input.
+    fn approval_requirement_for(&self, _input: &Value) -> ApprovalRequirement {
+        self.approval_requirement()
+    }
+
     /// Returns whether this tool is sandboxable.
     #[allow(dead_code)]
     fn is_sandboxable(&self) -> bool {
@@ -657,8 +675,25 @@ pub trait ToolSpec: Send + Sync {
             && !caps.contains(&ToolCapability::ExecutesCode)
     }
 
+    /// Returns whether this concrete tool input is read-only.
+    fn is_read_only_for(&self, _input: &Value) -> bool {
+        self.is_read_only()
+    }
+
     /// Returns whether this tool can be executed in parallel with others.
     fn supports_parallel(&self) -> bool {
+        false
+    }
+
+    /// Returns whether this concrete tool input can run in parallel.
+    fn supports_parallel_for(&self, _input: &Value) -> bool {
+        self.supports_parallel()
+    }
+
+    /// Returns whether this input starts durable/detached work and returns
+    /// immediately. Detached starts are not read-only, but in auto-approved
+    /// turns they do not need to block neighboring read-only inspections.
+    fn starts_detached_for(&self, _input: &Value) -> bool {
         false
     }
 

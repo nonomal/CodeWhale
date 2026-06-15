@@ -149,6 +149,218 @@ fn wait_for_completed_shell(manager: &mut ShellManager, task_id: &str) -> ShellR
 }
 
 #[test]
+fn exec_shell_parallel_flags_are_input_aware() {
+    let tool = ExecShellTool;
+    let readonly = json!({"command": "git status -s"});
+    assert!(tool.supports_parallel_for(&readonly));
+    assert!(tool.is_read_only_for(&readonly));
+    assert_eq!(
+        tool.approval_requirement_for(&readonly),
+        ApprovalRequirement::Auto
+    );
+
+    let bash_readonly = json!({"command": "bash -lc 'rg TODO crates/tui/src/tools'"});
+    assert!(tool.supports_parallel_for(&bash_readonly));
+    assert!(tool.is_read_only_for(&bash_readonly));
+    assert_eq!(
+        tool.approval_requirement_for(&bash_readonly),
+        ApprovalRequirement::Auto
+    );
+
+    for input in [
+        json!({"command": "git status -s", "background": true}),
+        json!({"command": "git status -s", "stdin": ""}),
+        json!({"command": "cargo build"}),
+        json!({"command": "bash -lc 'rg TODO crates | head'"}),
+    ] {
+        assert!(!tool.supports_parallel_for(&input), "{input:?}");
+        assert!(!tool.is_read_only_for(&input), "{input:?}");
+        assert_eq!(
+            tool.approval_requirement_for(&input),
+            ApprovalRequirement::Required,
+            "{input:?}"
+        );
+    }
+
+    assert!(tool.starts_detached_for(&json!({
+        "command": "cargo check --workspace",
+        "background": true
+    })));
+    assert!(tool.starts_detached_for(&json!({
+        "command": "cargo test -p codewhale-tui --bins",
+        "tty": true
+    })));
+    assert!(!tool.starts_detached_for(&json!({
+        "command": "cargo check --workspace"
+    })));
+    assert!(!tool.starts_detached_for(&json!({
+        "command": "cargo check --workspace",
+        "background": true,
+        "interactive": true
+    })));
+}
+
+#[tokio::test]
+async fn read_only_shell_policy_blocks_non_readonly_commands() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path())
+        .with_shell_policy(crate::worker_profile::ShellPolicy::ReadOnly);
+    let tool = ExecShellTool;
+
+    let result = tool
+        .execute(json!({"command": "cargo build"}), &ctx)
+        .await
+        .expect("execute");
+    assert!(!result.success);
+    assert!(result.content.contains("read-only shell policy"));
+
+    let result = tool
+        .execute(
+            json!({"command": "git status -s", "background": true}),
+            &ctx,
+        )
+        .await
+        .expect("execute");
+    assert!(!result.success);
+    assert!(result.content.contains("read-only shell policy"));
+}
+
+#[tokio::test]
+async fn read_only_shell_policy_allows_readonly_inspection() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path())
+        .with_shell_policy(crate::worker_profile::ShellPolicy::ReadOnly);
+
+    let result = ExecShellTool
+        .execute(json!({"command": "pwd"}), &ctx)
+        .await
+        .expect("execute");
+
+    assert!(
+        result.success,
+        "unexpected shell failure: {}",
+        result.content
+    );
+    assert_eq!(
+        result
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("status"))
+            .and_then(Value::as_str),
+        Some("Completed")
+    );
+}
+
+#[test]
+fn exec_shell_wait_schema_defaults_to_nonblocking_snapshot() {
+    let schema = ShellWaitTool::new("exec_shell_wait").input_schema();
+    assert_eq!(schema["properties"]["wait"]["default"], json!(false));
+    assert!(
+        ShellWaitTool::new("exec_shell_wait")
+            .description()
+            .contains("without blocking by default")
+    );
+}
+
+#[tokio::test]
+async fn exec_shell_wait_without_wait_arg_returns_snapshot() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path());
+    let start_result = ExecShellTool
+        .execute(
+            json!({"command": sleep_command(2), "background": true}),
+            &ctx,
+        )
+        .await
+        .expect("start background");
+    let task_id = start_result
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("task_id"))
+        .and_then(Value::as_str)
+        .expect("task id")
+        .to_string();
+
+    let started = Instant::now();
+    let wait_result = ShellWaitTool::new("exec_shell_wait")
+        .execute(json!({"task_id": task_id, "timeout_ms": 5_000}), &ctx)
+        .await
+        .expect("wait snapshot");
+
+    assert!(
+        started.elapsed() < Duration::from_millis(1_000),
+        "default wait path should return a snapshot instead of blocking"
+    );
+    assert_eq!(
+        wait_result
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("status"))
+            .and_then(Value::as_str),
+        Some("Running")
+    );
+}
+
+#[tokio::test]
+async fn background_start_advertises_auto_notify() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path());
+    let result = ExecShellTool
+        .execute(
+            json!({"command": sleep_command(1), "background": true}),
+            &ctx,
+        )
+        .await
+        .expect("start background");
+
+    assert!(result.content.contains("notified in the transcript"));
+    let metadata = result.metadata.as_ref().expect("metadata");
+    assert_eq!(
+        metadata
+            .get("auto_notify_on_completion")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        metadata.get("background_policy").and_then(Value::as_str),
+        Some("nonblocking")
+    );
+}
+
+#[tokio::test]
+async fn drain_finished_jobs_reports_once() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path());
+    let result = ExecShellTool
+        .execute(
+            json!({"command": echo_command("drain-finished-once"), "background": true}),
+            &ctx,
+        )
+        .await
+        .expect("start background");
+    let task_id = result
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("task_id"))
+        .and_then(Value::as_str)
+        .expect("task id")
+        .to_string();
+
+    let mut manager = ctx.shell_manager.lock().expect("shell manager");
+    let completed = wait_for_completed_shell(&mut manager, &task_id);
+    assert_ne!(completed.status, ShellStatus::Running);
+
+    let first = manager.drain_finished_jobs();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].task_id, task_id);
+    assert_eq!(first[0].status, ShellStatus::Completed);
+    assert!(first[0].stdout_tail.contains("drain-finished-once"));
+
+    let second = manager.drain_finished_jobs();
+    assert!(second.is_empty(), "completion should be reported only once");
+}
+
+#[test]
 #[cfg(unix)]
 fn shell_execution_scrubs_parent_env_and_keeps_explicit_env() {
     let _guard = env_lock().lock().expect("env lock");
@@ -366,6 +578,57 @@ fn test_job_list_poll_cancel_and_stale_snapshot() {
         .expect("stale job");
     assert!(stale.stale);
     assert_eq!(stale.linked_task_id.as_deref(), Some("task_old"));
+}
+
+#[test]
+fn running_job_snapshot_marks_no_output_stale_after_threshold() {
+    let tmp = tempdir().expect("tempdir");
+    let mut manager = ShellManager::new(tmp.path().to_path_buf());
+
+    let started = manager
+        .execute(&sleep_command(5), None, 5000, true)
+        .expect("execute");
+    let task_id = started.task_id.expect("task id");
+
+    {
+        let shell = manager.processes.get_mut(&task_id).expect("live shell");
+        shell.last_output_at = Instant::now() - STALE_NO_OUTPUT_AFTER - Duration::from_millis(1);
+    }
+
+    let job = manager
+        .list_jobs()
+        .into_iter()
+        .find(|job| job.id == task_id)
+        .expect("running job");
+
+    assert_eq!(job.status, ShellStatus::Running);
+    assert!(job.stale, "silent running job should be marked stale");
+    assert!(
+        job.elapsed_since_output_ms
+            .is_some_and(|elapsed| elapsed >= STALE_NO_OUTPUT_AFTER.as_millis() as u64),
+        "elapsed no-output time should be exposed: {job:?}"
+    );
+}
+
+#[test]
+fn running_job_snapshot_keeps_recent_no_output_fresh() {
+    let tmp = tempdir().expect("tempdir");
+    let mut manager = ShellManager::new(tmp.path().to_path_buf());
+
+    let started = manager
+        .execute(&sleep_command(5), None, 5000, true)
+        .expect("execute");
+    let task_id = started.task_id.expect("task id");
+
+    let job = manager
+        .list_jobs()
+        .into_iter()
+        .find(|job| job.id == task_id)
+        .expect("running job");
+
+    assert_eq!(job.status, ShellStatus::Running);
+    assert!(!job.stale, "fresh running job should not start stale");
+    assert!(job.elapsed_since_output_ms.is_some());
 }
 
 #[test]
@@ -649,8 +912,11 @@ fn test_exec_shell_schema_guides_gt_five_second_work_to_background() {
     let description = schema["properties"]["background"]["description"]
         .as_str()
         .expect("background description");
+    // The schema must steer >5s work to the background and point at the wait
+    // tool for early output. The wording references `exec_shell_wait` (the
+    // model-visible wait tool); the older `task_shell_start` phrasing was
+    // dropped, but the >5s + wait-tool guidance is the load-bearing contract.
     assert!(description.contains(">5 seconds"), "{description}");
-    assert!(description.contains("task_shell_start"), "{description}");
     assert!(description.contains("exec_shell_wait"), "{description}");
 }
 
@@ -723,7 +989,9 @@ async fn test_exec_shell_foreground_can_move_to_background() {
 
     assert!(result.success);
     assert!(result.content.contains("Command moved to background"));
-    assert!(result.content.contains("exec_shell_cancel"));
+    // The detach message points the model at the wait tool for early output
+    // (the cancel-tool reference was reworded to `exec_shell_wait`).
+    assert!(result.content.contains("exec_shell_wait"));
 
     let meta = result.metadata.expect("metadata");
     assert_eq!(meta.get("status").and_then(Value::as_str), Some("Running"));

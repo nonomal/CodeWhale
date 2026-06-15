@@ -4,13 +4,27 @@
 //! allowing the UI to remain responsive while the engine processes requests.
 
 use crate::compaction::CompactionConfig;
+use crate::config::ApiProvider;
 use crate::models::{Message, SystemPrompt};
+use crate::tools::goal::GoalStatus;
 use crate::tui::app::AppMode;
 use crate::tui::approval::ApprovalMode;
 use std::path::PathBuf;
 
 /// Prefix used for tool-call ids created by local composer shell shortcuts.
 pub const USER_SHELL_TOOL_ID_PREFIX: &str = "user_shell_";
+
+/// Snapshot of session state for saving to disk.
+/// Returned by `Op::GetSessionSnapshot` via a oneshot channel.
+#[derive(Debug, Clone)]
+pub struct SessionSnapshot {
+    pub messages: Vec<Message>,
+    pub total_tokens: u64,
+    pub model: String,
+    pub workspace: PathBuf,
+    pub system_prompt: Option<SystemPrompt>,
+    pub mode: String,
+}
 
 /// Operations that can be submitted to the engine.
 #[derive(Debug, Clone)]
@@ -19,8 +33,14 @@ pub enum Op {
     SendMessage {
         content: String,
         mode: AppMode,
+        /// Provider route to use for this turn. `None` keeps the session
+        /// provider; auto model routing sets this when the inventory selects a
+        /// different authenticated provider.
+        provider: Option<ApiProvider>,
         model: String,
         goal_objective: Option<String>,
+        goal_token_budget: Option<u32>,
+        goal_status: GoalStatus,
         /// Reasoning-effort tier: `"off" | "low" | "medium" | "high" | "max"`.
         /// `None` lets the provider apply its default.
         reasoning_effort: Option<String>,
@@ -41,6 +61,7 @@ pub enum Op {
         /// Hook executor for control-plane hooks.
         /// `ToolCallBefore` hooks may deny a tool call with exit code 2.
         hook_executor: Option<std::sync::Arc<crate::hooks::HookExecutor>>,
+        verbosity: Option<String>,
     },
 
     /// Execute a user-submitted composer shell command (`! <command>`) without
@@ -99,6 +120,13 @@ pub enum Op {
 
     /// Run context compaction immediately.
     CompactContext,
+
+    /// Get a snapshot of the current session state (messages, tokens, etc.)
+    /// for saving to disk. Returns the result via the oneshot sender so
+    /// the caller doesn't have to compete with the SSE event stream.
+    GetSessionSnapshot {
+        tx: std::sync::Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<SessionSnapshot>>>>,
+    },
 
     /// Run agent-driven context purging.
     PurgeContext,

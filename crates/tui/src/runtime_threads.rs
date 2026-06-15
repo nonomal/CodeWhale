@@ -39,6 +39,7 @@ use crate::tools::plan::new_shared_plan_state;
 use crate::tools::subagent::SubAgentStatus;
 use crate::tools::todo::new_shared_todo_list;
 use crate::tui::app::AppMode;
+use codewhale_protocol::runtime::{DynamicToolSpec, TurnEnvironmentParams};
 
 const EVENT_CHANNEL_CAPACITY: usize = 1024;
 const MAX_ACTIVE_THREADS_DEFAULT: usize = 8;
@@ -59,6 +60,15 @@ fn validated_record_id<'a>(id: &'a str, label: &str) -> Result<&'a str> {
         bail!("{label} contains unsupported characters");
     }
     Ok(trimmed)
+}
+
+fn sort_turn_items_by_start(items: &mut [TurnItemRecord]) {
+    let fallback = Utc::now();
+    items.sort_by(|a, b| {
+        let left = a.started_at.unwrap_or(fallback);
+        let right = b.started_at.unwrap_or(fallback);
+        left.cmp(&right)
+    });
 }
 
 /// Bumped to 2 for v0.6.6 after live engine semantics changed. The persisted
@@ -432,11 +442,51 @@ impl RuntimeThreadStore {
                 out.push(item);
             }
         }
-        out.sort_by(|a, b| {
-            let left = a.started_at.unwrap_or_else(Utc::now);
-            let right = b.started_at.unwrap_or_else(Utc::now);
-            left.cmp(&right)
-        });
+        sort_turn_items_by_start(&mut out);
+        Ok(out)
+    }
+
+    pub fn list_items_for_turns_map(
+        &self,
+        turn_ids: &[String],
+    ) -> Result<HashMap<String, Vec<TurnItemRecord>>> {
+        if turn_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        for turn_id in turn_ids {
+            validated_record_id(turn_id, "turn id")?;
+        }
+
+        let wanted: HashSet<&str> = turn_ids.iter().map(String::as_str).collect();
+        let mut out: HashMap<String, Vec<TurnItemRecord>> = HashMap::new();
+        for entry in fs::read_dir(&self.items_dir)
+            .with_context(|| format!("Failed to read {}", self.items_dir.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().is_none_or(|ext| ext != "json") {
+                continue;
+            }
+            let raw = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read {}", path.display()))?;
+            let item: TurnItemRecord = serde_json::from_str(&raw)
+                .with_context(|| format!("Failed to parse {}", path.display()))?;
+            if item.schema_version > CURRENT_RUNTIME_SCHEMA_VERSION {
+                bail!(
+                    "Item schema v{} is newer than supported v{}",
+                    item.schema_version,
+                    CURRENT_RUNTIME_SCHEMA_VERSION
+                );
+            }
+            if wanted.contains(item.turn_id.as_str()) {
+                out.entry(item.turn_id.clone()).or_default().push(item);
+            }
+        }
+
+        for items in out.values_mut() {
+            sort_turn_items_by_start(items);
+        }
         Ok(out)
     }
 
@@ -565,7 +615,7 @@ pub enum ThreadListFilter {
     ArchivedOnly,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CreateThreadRequest {
     pub model: Option<String>,
     pub workspace: Option<PathBuf>,
@@ -579,6 +629,10 @@ pub struct CreateThreadRequest {
     pub system_prompt: Option<String>,
     #[serde(default)]
     pub task_id: Option<String>,
+    #[serde(default)]
+    pub dynamic_tools: Vec<DynamicToolSpec>,
+    #[serde(default)]
+    pub environments: Vec<TurnEnvironmentParams>,
 }
 
 /// Mutable fields accepted by `PATCH /v1/threads/{id}`.
@@ -599,7 +653,7 @@ pub struct UpdateThreadRequest {
     pub workspace: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StartTurnRequest {
     pub prompt: String,
     #[serde(default)]
@@ -609,6 +663,10 @@ pub struct StartTurnRequest {
     pub allow_shell: Option<bool>,
     pub trust_mode: Option<bool>,
     pub auto_approve: Option<bool>,
+    #[serde(default)]
+    pub dynamic_tools: Vec<DynamicToolSpec>,
+    #[serde(default)]
+    pub environment_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1237,9 +1295,13 @@ impl RuntimeThreadManager {
     pub async fn get_thread_detail(&self, id: &str) -> Result<ThreadDetail> {
         let thread = self.get_thread(id).await?;
         let turns = self.store.list_turns_for_thread(id)?;
+        let turn_ids: Vec<String> = turns.iter().map(|turn| turn.id.clone()).collect();
+        let mut items_by_turn = self.store.list_items_for_turns_map(&turn_ids)?;
         let mut items = Vec::new();
         for turn in &turns {
-            items.extend(self.store.list_items_for_turn(&turn.id)?);
+            if let Some(mut turn_items) = items_by_turn.remove(&turn.id) {
+                items.append(&mut turn_items);
+            }
         }
         let latest_seq = self.store.current_seq().await;
         Ok(ThreadDetail {
@@ -1662,23 +1724,24 @@ impl RuntimeThreadManager {
         let mode = parse_mode(req.mode.as_deref().unwrap_or(&thread.mode));
         let requested_model = req.model.unwrap_or_else(|| thread.model.clone());
         let auto_model = requested_model.trim().eq_ignore_ascii_case("auto");
-        let (model, reasoning_effort) = if auto_model {
-            let selection = crate::model_routing::resolve_auto_route_with_flash(
+        let (provider, model, reasoning_effort) = if auto_model {
+            let selection = crate::model_routing::resolve_auto_route_with_inventory(
                 &self.config,
                 &prompt,
                 "",
                 "auto",
                 "auto",
             )
-            .await;
+            .await?;
             (
+                selection.provider,
                 selection.model,
                 selection
                     .reasoning_effort
                     .map(|effort| effort.as_setting().to_string()),
             )
         } else {
-            (requested_model, None)
+            (self.config.api_provider(), requested_model, None)
         };
         let allow_shell = req.allow_shell.unwrap_or(thread.allow_shell);
         let trust_mode = req.trust_mode.unwrap_or(thread.trust_mode);
@@ -1691,8 +1754,11 @@ impl RuntimeThreadManager {
             .send(Op::SendMessage {
                 content: prompt,
                 mode,
+                provider: Some(provider),
                 model: model.clone(),
                 goal_objective: None,
+                goal_token_budget: None,
+                goal_status: crate::tools::goal::GoalStatus::Active,
                 reasoning_effort,
                 reasoning_effort_auto: auto_model,
                 auto_model,
@@ -1708,6 +1774,7 @@ impl RuntimeThreadManager {
                 } else {
                     crate::tui::approval::ApprovalMode::Suggest
                 },
+                verbosity: self.config.verbosity.clone(),
             })
             .await
             .map_err(|e| anyhow!("Failed to start turn: {e}"))?;
@@ -2036,6 +2103,7 @@ impl RuntimeThreadManager {
             show_thinking: settings.show_thinking,
             max_steps: 100,
             max_subagents: self.config.max_subagents().clamp(1, MAX_SUBAGENTS),
+            interactive_launch_limit: self.config.interactive_launch_limit(),
             features: self.config.features(),
             compaction,
             capacity: crate::core::capacity::CapacityControllerConfig::from_app_config(
@@ -2081,7 +2149,10 @@ impl RuntimeThreadManager {
             vision_config: self.config.vision_model_config(),
             strict_tool_mode: self.config.strict_tool_mode.unwrap_or(false),
             goal_objective: None,
+            goal_token_budget: None,
+            goal_status: crate::tools::goal::GoalStatus::Active,
             allowed_tools: None,
+            disallowed_tools: None,
             hook_executor: None,
             locale_tag: crate::localization::resolve_locale(&settings.locale)
                 .tag()
@@ -2092,6 +2163,7 @@ impl RuntimeThreadManager {
             search_base_url: self.config.search.as_ref().and_then(|s| s.base_url.clone()),
             tools_always_load: self.config.tools_always_load(),
             tools: self.config.tools.clone(),
+            verbosity: self.config.verbosity.clone(),
         };
 
         let engine = spawn_engine(engine_cfg, &self.config);
@@ -2131,6 +2203,13 @@ impl RuntimeThreadManager {
             let _ = handle.send(Op::Shutdown).await;
         }
         Ok(engine)
+    }
+
+    /// Get the engine handle for a thread, loading it if necessary.
+    /// Public wrapper around the private `ensure_engine_loaded`.
+    pub async fn get_engine(&self, thread_id: &str) -> Result<EngineHandle> {
+        let thread = self.get_thread(thread_id).await?;
+        self.ensure_engine_loaded(&thread).await
     }
 
     fn reconstruct_messages_from_turns(&self, turns: &[TurnRecord]) -> Result<Vec<Message>> {
@@ -3715,6 +3794,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -3775,6 +3855,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -3821,6 +3902,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -3845,6 +3927,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -3911,6 +3994,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -3944,6 +4028,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4006,6 +4091,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4023,6 +4109,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: Some(true),
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4049,6 +4136,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4066,6 +4154,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: Some(false),
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4092,6 +4181,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4125,6 +4215,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4175,6 +4266,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4235,6 +4327,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4252,6 +4345,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4286,6 +4380,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_thread_detail_batches_items_by_turn_without_losing_order() -> Result<()> {
+        let manager = test_manager(test_runtime_dir())?;
+        let thread = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: None,
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+                ..Default::default()
+            })
+            .await?;
+
+        let base = Utc::now();
+        let mut first_turn = sample_turn(
+            &thread.id,
+            "turn_detail_batch_first",
+            RuntimeTurnStatus::Completed,
+        );
+        first_turn.created_at = base;
+        let mut second_turn = sample_turn(
+            &thread.id,
+            "turn_detail_batch_second",
+            RuntimeTurnStatus::Completed,
+        );
+        second_turn.created_at = base + chrono::Duration::seconds(1);
+        manager.store.save_turn(&first_turn)?;
+        manager.store.save_turn(&second_turn)?;
+
+        let mut first_late = sample_item(
+            &first_turn.id,
+            "item_detail_first_late",
+            TurnItemLifecycleStatus::Completed,
+        );
+        first_late.started_at = Some(base + chrono::Duration::seconds(5));
+        let mut first_early = sample_item(
+            &first_turn.id,
+            "item_detail_first_early",
+            TurnItemLifecycleStatus::Completed,
+        );
+        first_early.started_at = Some(base + chrono::Duration::seconds(1));
+        let mut second_item = sample_item(
+            &second_turn.id,
+            "item_detail_second",
+            TurnItemLifecycleStatus::Completed,
+        );
+        second_item.started_at = Some(base + chrono::Duration::seconds(2));
+        let unrelated = sample_item(
+            "turn_detail_batch_unrelated",
+            "item_detail_unrelated",
+            TurnItemLifecycleStatus::Completed,
+        );
+
+        manager.store.save_item(&first_late)?;
+        manager.store.save_item(&second_item)?;
+        manager.store.save_item(&unrelated)?;
+        manager.store.save_item(&first_early)?;
+
+        let detail = manager.get_thread_detail(&thread.id).await?;
+        let item_ids: Vec<&str> = detail.items.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(
+            item_ids,
+            vec![
+                "item_detail_first_early",
+                "item_detail_first_late",
+                "item_detail_second"
+            ]
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn interrupt_turn_marks_interrupted_after_cleanup() -> Result<()> {
         let manager = test_manager(test_runtime_dir())?;
         let thread = manager
@@ -4299,6 +4469,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4339,6 +4510,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4391,6 +4563,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4406,6 +4579,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: Some(true),
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4477,6 +4651,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4492,6 +4667,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4572,6 +4748,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4587,6 +4764,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4652,6 +4830,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
         let mut harness = install_mock_engine(&manager, &thread.id).await;
@@ -4667,6 +4846,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: Some(true),
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4763,6 +4943,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
         assert!(!manager.store.load_thread(&thread.id)?.auto_approve);
@@ -4779,6 +4960,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4847,6 +5029,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4862,6 +5045,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: Some(true),
                     auto_approve: Some(true),
+                    ..Default::default()
                 },
             )
             .await?;
@@ -4932,6 +5116,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -4989,6 +5174,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -5041,6 +5227,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
 
@@ -5139,6 +5326,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -5555,6 +5743,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
         seed_turns_with_user_messages(&manager, &thread.id, &["first", "second", "third"])?;
@@ -5591,6 +5780,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
         seed_turns_with_user_messages(&manager, &thread.id, &["a", "b", "c", "d"])?;
@@ -5620,6 +5810,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
         seed_turns_with_user_messages(&manager, &thread.id, &["only"])?;
@@ -5646,6 +5837,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                ..Default::default()
             })
             .await?;
         let turn_ids = seed_turns_with_user_messages(&manager, &thread.id, &["x", "y", "z"])?;
